@@ -66,7 +66,9 @@ fi
 if [ -d "$SYSTEMD_DIR" ]; then
     if [ -f "$PROJECT_ROOT/systemd/$SERVICE_FILE" ]; then
         log "Installing/Updating systemd service..."
-        sudo cp "$PROJECT_ROOT/systemd/$SERVICE_FILE" "$SYSTEMD_DIR/"
+        sed -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+            -e "s|__USER__|$USER|g" \
+            "$PROJECT_ROOT/systemd/$SERVICE_FILE" | sudo tee "$SYSTEMD_DIR/$SERVICE_FILE" > /dev/null
         sudo systemctl daemon-reload
         sudo systemctl enable ollama-watcher
         sudo systemctl restart ollama-watcher

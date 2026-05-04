@@ -88,7 +88,7 @@ def poll_smi():
 def main(stdscr):
     # Load ASCII Header
     try:
-        with open("/home/dst/.ollama-watch-tool/scripts/header.txt", "r") as f:
+        with open(os.path.expanduser("~/.ollama-watch-tool/scripts/header.txt"), "r") as f:
             header_lines = f.read().splitlines()
     except FileNotFoundError:
         header_lines = ["WATCH OLLAMA", "Monitoring, Benchmarking, & Management Suite"]
