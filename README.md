@@ -56,7 +56,8 @@ To set your Ollama host and port (default 11435):
 ```
 
 ## System Requirements
-- Ubuntu 24.10+
+- **OS**: Ubuntu Linux (or systemd-based Linux distributions)
 - Python 3.x
 - Ollama
 - `amd-smi` (for AMD GPU monitoring)
+- `systemd` (required for background watcher)
