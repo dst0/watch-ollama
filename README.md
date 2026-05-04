@@ -40,18 +40,18 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 ### Interactive Monitoring
 Run the TUI for real-time monitoring:
 ```bash
-~/.ollama-tools/scripts/watch-ollama
+~/.ollama-watch-tool/scripts/watch-ollama
 ```
 
 ### Switching GPU Backends
 ```bash
-~/.ollama-tools/scripts/switch-gpu.sh [vulkan|rocm|status]
+~/.ollama-watch-tool/scripts/switch-gpu.sh [vulkan|rocm|status]
 ```
 
 ### Server Configuration
 To set your Ollama host and port (default 11435):
 ```bash
-~/.ollama-tools/scripts/setup-ollama.sh
+~/.ollama-watch-tool/scripts/setup-ollama.sh
 ```
 
 ## System Requirements
