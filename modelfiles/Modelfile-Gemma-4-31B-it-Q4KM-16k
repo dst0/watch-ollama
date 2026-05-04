@@ -1,0 +1,3 @@
+FROM /home/dst/models/google/gemma-4-31B-it-Q4_K_M/gemma-4-31B-it-Q4_K_M.gguf
+PARAMETER num_ctx 16384
+PARAMETER num_predict -1

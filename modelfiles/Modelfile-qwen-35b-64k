@@ -1,0 +1,3 @@
+FROM qwen3.6-35b-64k:latest
+PARAMETER num_ctx 32768
+PARAMETER num_predict -1

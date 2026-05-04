@@ -1,0 +1,4 @@
+FROM qwen3.6-35b-64k:latest
+PARAMETER num_ctx 65536
+PARAMETER num_predict -1
+PARAMETER flash_attention true
