@@ -44,6 +44,24 @@ class LogSanitizationTests(unittest.TestCase):
     def test_tui_wraps_long_sanitized_lines(self):
         self.assertEqual(TUI.wrap_render_line("abcdef", 3), ["abc", "def"])
 
+    def test_watcher_sanitizer_preserves_html_css_and_code(self):
+        code = (
+            "<div class=\"box\">Hello</div>\n"
+            "<style>.box { color: red; }</style>\n"
+            "if (a < b && b > c) { return '<tag>'; }"
+        )
+
+        self.assertEqual(WATCHER.sanitize_decoded_text(code), code)
+
+    def test_tui_sanitizer_preserves_html_css_and_code(self):
+        code = (
+            "<div class=\"box\">Hello</div>\n"
+            "<style>.box { color: red; }</style>\n"
+            "if (a < b && b > c) { return '<tag>'; }"
+        )
+
+        self.assertEqual(TUI.sanitize_render_text(code), code)
+
 
 if __name__ == "__main__":
     unittest.main()
