@@ -49,7 +49,7 @@ The uninstaller:
 - Removes all shell aliases (and any legacy PATH entry) from your rc file.
 - Stops, disables, and removes the `ollama-watcher` systemd service.
 - Removes the scripts directory (`~/.ollama-watch-tool/scripts/`).
-- Removes the entire install directory (including logs).
+- Optionally removes the entire install directory (including logs).
 - Logs every change with a `[CHANGE]` tag to the console **and** to a timestamped file in `/tmp` (e.g. `/tmp/watch-ollama-uninstall-20260504-150000.log`).
 
 ## Usage
