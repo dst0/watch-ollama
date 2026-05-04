@@ -104,16 +104,10 @@ else
     log "Scripts directory not found: $INSTALL_DIR — skipping"
 fi
 
-# ── Optionally remove install root (contains install.log etc.) ─────────────────
+# ── Remove install root (contains install.log etc.) ───────────────────────────
 if [ -d "$INSTALL_ROOT" ]; then
-    echo ""
-    read -p "Remove entire install directory $INSTALL_ROOT (including all logs)? (y/n): " remove_root
-    if [[ $remove_root == [yY] ]]; then
-        rm -rf "$INSTALL_ROOT"
-        change "Removed directory tree: $INSTALL_ROOT"
-    else
-        log "Kept: $INSTALL_ROOT"
-    fi
+    rm -rf "$INSTALL_ROOT"
+    change "Removed directory tree: $INSTALL_ROOT"
 fi
 
 log "--- Uninstallation complete ---"

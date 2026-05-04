@@ -36,18 +36,20 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
    *   The installer will prompt you for a clean installation if an existing one is detected.
    *   **Safe Reinstall**: Configuration files (`*.conf`) are preserved during clean installs.
    *   Every system change is logged with a `[CHANGE]` tag — both to the console and to `~/.ollama-watch-tool/install.log`.
-   *   Named shell aliases (`watch-ollama`, `setup-ollama`, `switch-gpu`, `update-ollama`, `ollama-report`, `ollama-stats`) are written to the rc file for your current shell (bash → `.bashrc`, zsh → `.zshrc`, fish → `config.fish`, ksh → `.kshrc`). Run `source <your-rc-file>` or open a new terminal to activate them.
+   *   Named shell aliases (`watch-ollama`, `setup-ollama`, `switch-gpu`, `update-ollama`, `ollama-report`, `ollama-stats`, `unwatch-ollama`) are written to the rc file for your current shell (bash → `.bashrc`, zsh → `.zshrc`, fish → `config.fish`, ksh → `.kshrc`). Run `source <your-rc-file>` or open a new terminal to activate them.
 
 ## Uninstallation
 
 ```bash
+unwatch-ollama
+# Or, without the alias:
 ./uninstall.sh
 ```
 The uninstaller:
 - Removes all shell aliases (and any legacy PATH entry) from your rc file.
 - Stops, disables, and removes the `ollama-watcher` systemd service.
 - Removes the scripts directory (`~/.ollama-watch-tool/scripts/`).
-- Optionally removes the entire install directory (including logs).
+- Removes the entire install directory (including logs).
 - Logs every change with a `[CHANGE]` tag to the console **and** to a timestamped file in `/tmp` (e.g. `/tmp/watch-ollama-uninstall-20260504-150000.log`).
 
 ## Usage
