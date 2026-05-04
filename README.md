@@ -7,7 +7,6 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 - **Interactive TUI**: `watch-ollama` provides real-time GPU/SMI monitoring and readable logs.
 - **Background Watcher**: `ollama_watcher.py` logs processing service with systemd integration.
 - **Reporting & Stats**: `ollama_report.py` and `ollama_stats.py` for inference and hardware analysis.
-- **Benchmarking**: `benchmark_ollama.py` for model performance evaluation.
 - **Utility Scripts**:
   - `switch-gpu.sh`: Toggle between ROCm and Vulkan backends.
   - `update-ollama.sh`: Automated Ollama update process.
