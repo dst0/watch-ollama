@@ -152,15 +152,11 @@ add_aliases "$SHELL_RC" "$CURRENT_SHELL"
 # ── systemd service ────────────────────────────────────────────────────────────
 if [ -d "$SYSTEMD_DIR" ]; then
     if [ -f "$PROJECT_ROOT/systemd/$SERVICE_FILE" ]; then
-        log "Installing systemd service: $SERVICE_FILE"
-        sed \
-            -e "s|User=dst|User=$USER|g" \
-            -e "s|Group=dst|Group=$USER|g" \
-            -e "s|/home/dst/.ollama-watch-tool/scripts|$INSTALL_DIR|g" \
-            "$PROJECT_ROOT/systemd/$SERVICE_FILE" \
-            | sudo tee "$SYSTEMD_DIR/$SERVICE_FILE" > /dev/null
+        log "Installing/Updating systemd service..."
+        sed -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+            -e "s|__USER__|$USER|g" \
+            "$PROJECT_ROOT/systemd/$SERVICE_FILE" | sudo tee "$SYSTEMD_DIR/$SERVICE_FILE" > /dev/null
         change "Wrote: $SYSTEMD_DIR/$SERVICE_FILE"
-
         sudo systemctl daemon-reload
         change "systemctl daemon-reload"
 
