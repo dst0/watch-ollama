@@ -62,19 +62,51 @@ else
     exit 1
 fi
 
+# Add scripts directory to PATH in shell rc files (idempotent)
+add_to_path() {
+    local rc_file="$1"
+    local marker="# watch-ollama: PATH"
+    local path_line='export PATH="$HOME/.ollama-watch-tool/scripts:$PATH"'
+    if [ -f "$rc_file" ] && ! grep -qF "$marker" "$rc_file"; then
+        echo "" >> "$rc_file"
+        echo "$marker" >> "$rc_file"
+        echo "$path_line" >> "$rc_file"
+        log "Added scripts to PATH in $rc_file"
+    fi
+}
+add_to_path "$HOME/.bashrc"
+[ -f "$HOME/.zshrc" ] && add_to_path "$HOME/.zshrc"
+
 # Setup systemd service
 if [ -d "$SYSTEMD_DIR" ]; then
     if [ -f "$PROJECT_ROOT/systemd/$SERVICE_FILE" ]; then
         log "Installing/Updating systemd service..."
-        sudo cp "$PROJECT_ROOT/systemd/$SERVICE_FILE" "$SYSTEMD_DIR/"
+        # Generate a customised service file with the current user and install path
+        WATCHER_BIN="$INSTALL_DIR/ollama_watcher.py"
+        sed \
+            -e "s|User=dst|User=$USER|g" \
+            -e "s|Group=dst|Group=$USER|g" \
+            -e "s|/home/dst/.ollama-watch-tool/scripts|$INSTALL_DIR|g" \
+            "$PROJECT_ROOT/systemd/$SERVICE_FILE" \
+            | sudo tee "$SYSTEMD_DIR/$SERVICE_FILE" > /dev/null
         sudo systemctl daemon-reload
         sudo systemctl enable ollama-watcher
-        sudo systemctl restart ollama-watcher
-        log "Service installed and restarted."
+        # Use 'restart' if already running, 'start' otherwise, to avoid a
+        # non-zero exit on the very first install.
+        if sudo systemctl is-active --quiet ollama-watcher; then
+            sudo systemctl restart ollama-watcher
+        else
+            if ! sudo systemctl start ollama-watcher; then
+                log "Warning: Could not start ollama-watcher service (will be started on next boot)."
+            fi
+        fi
+        log "Service installed and enabled."
     else
         log "Error: Service file not found."
     fi
 fi
 
 log "--- Installation v$VERSION Complete ---"
+log "Scripts installed to: $INSTALL_DIR"
+log "Run 'source ~/.bashrc' (or open a new terminal) to use watch-ollama directly."
 log "Log file: $LOG_FILE"

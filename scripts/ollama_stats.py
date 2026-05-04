@@ -16,7 +16,7 @@ def parse_logs():
     print("=== OLLAMA SYSTEM STARTUP / CONFIG ===")
     
     try:
-        with open(LOG_FILE, 'r') as f:
+        with open(LOG_FILE, 'r', errors="replace") as f:
             lines = f.readlines()
             
             for i, line in enumerate(lines):

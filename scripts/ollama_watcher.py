@@ -105,9 +105,16 @@ def main():
                         out.flush()
 
     except Exception as e:
-        with open(READABLE_LOG, "a") as out:
-            out.write(f"\nWATCHER FATAL ERROR: {e}\n")
-            out.flush()
+        try:
+            with open(READABLE_LOG, "a") as out:
+                out.write(f"\nWATCHER FATAL ERROR: {e}\n")
+                out.flush()
+        except Exception:
+            # If we can't write to the readable log either, emit to stderr so
+            # systemd's journal captures it.
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,7 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 - **Utility Scripts**:
   - `switch-gpu.sh`: Toggle between ROCm and Vulkan backends.
   - `update-ollama.sh`: Automated Ollama update process.
-  - `setup-ollama.sh`: Configuration helper for setting ports/hosts.
+  - `setup-ollama.sh`: Interactive configuration helper for setting ports/hosts.
 
 ## Repository Structure
 - **`scripts/`**: All executable tools and utility scripts.
@@ -31,8 +31,9 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
    ```bash
    ./install.sh
    ```
-   *   The installer will prompt you for a clean installation if an existing one is detected. 
+   *   The installer will prompt you for a clean installation if an existing one is detected.
    *   **Safe Reinstall**: Configuration files (`*.conf`) are preserved during clean installs.
+   *   The `scripts/` directory is automatically added to your `$PATH` (applied on next shell login or `source ~/.bashrc`).
    *   Logs are recorded to `/var/log/watch-ollama-install.log`.
 
 ## Usage
@@ -40,19 +41,27 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 ### Interactive Monitoring
 Run the TUI for real-time monitoring:
 ```bash
-~/.ollama-tools/scripts/watch-ollama
+watch-ollama
 ```
+*(After first login following installation, the scripts directory is on your `$PATH`.)*
 
 ### Switching GPU Backends
 ```bash
-~/.ollama-tools/scripts/switch-gpu.sh [vulkan|rocm|status]
+switch-gpu.sh [vulkan|rocm|status]
 ```
 
 ### Server Configuration
-To set your Ollama host and port (default 11435):
+Configure the Ollama bind address and port interactively (defaults: `0.0.0.0:11435`):
 ```bash
-~/.ollama-tools/scripts/setup-ollama.sh
+setup-ollama.sh
 ```
+Or pass values directly:
+```bash
+setup-ollama.sh 0.0.0.0 11435
+```
+This writes an `ollama.conf` file alongside the scripts so that `watch-ollama` automatically connects to the correct address.
+
+> **Note on port**: Ollama's built-in default is `11434`. This project defaults to `11435` to allow running a custom instance alongside a system-managed one. Adjust as needed.
 
 ## System Requirements
 - **OS**: Ubuntu Linux (or systemd-based Linux distributions)
