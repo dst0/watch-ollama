@@ -1,3 +1,0 @@
-FROM /home/dst/models/unsloth/Qwen3.6-35B-A3B-IQ3S/Qwen3.6-35B-A3B-UD-IQ3_S.gguf
-PARAMETER num_ctx 65536
-PARAMETER num_predict -1

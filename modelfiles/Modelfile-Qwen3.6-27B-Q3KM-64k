@@ -1,3 +1,0 @@
-FROM /home/dst/models/unsloth/Qwen3.6-27B-Q3KM/Qwen3.6-27B-Q3_K_M.gguf
-PARAMETER num_ctx 65536
-PARAMETER num_predict -1

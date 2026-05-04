@@ -1,3 +1,0 @@
-FROM qwen3.5:4b
-PARAMETER num_ctx 16384
-PARAMETER num_predict -1
