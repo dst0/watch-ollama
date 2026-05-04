@@ -86,16 +86,14 @@ def poll_smi():
         time.sleep(0.5)
 
 def main(stdscr):
-    # ASCII Header
-    header = [
-        " __      __      _       _        ___  _      _                      ",
-        " \\ \\    / /_ _ _| |_ ___| |_     / _ \\| |    | |__ _ _ __  __ _      ",
-        "  \\ \\/\\/ / _' (_-<  _/ -_) ' \\   | (_) | |____| / _' | '  \\/ _' |     ",
-        "   \\_/\\_/\\__,_/__/\\__\\___|_||_|   \\___/|______|_\\\\__,_|_|_|_\\__,_|     ",
-        "        Monitoring, Benchmarking, & Management Suite",
-        "",
-        "Welcome to watch-ollama. Press 'q' to quit."
-    ]
+    # Load ASCII Header
+    try:
+        with open("/home/dst/.ollama-watch-tool/scripts/header.txt", "r") as f:
+            header_lines = f.read().splitlines()
+    except FileNotFoundError:
+        header_lines = ["WATCH OLLAMA", "Monitoring, Benchmarking, & Management Suite"]
+    
+    header = header_lines + ["", "Welcome to watch-ollama. Press 'q' to quit."]
     
     curses.curs_set(0)
     stdscr.nodelay(1)

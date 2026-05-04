@@ -17,14 +17,7 @@ LOG_FILE="/var/log/watch-ollama-install.log"
 sudo touch "$LOG_FILE" 2>/dev/null || true
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-echo "
- __      __      _       _        ___  _      _                      
- \ \    / /_ _ _| |_ ___| |_     / _ \| |    | |__ _ _ __  __ _      
-  \ \/\/ / _' (_-<  _/ -_) ' \   | (_) | |____| / _' | '  \/ _' |     
-   \_/\_/\__,_/__/\__\___|_||_|   \___/|______|_\\__,_|_|_|_\__,_|     
-                                                                       
-        Monitoring, Benchmarking, & Management Suite
-"
+cat "$PROJECT_ROOT/scripts/header.txt"
 
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] [v$VERSION] $1"
