@@ -33,6 +33,8 @@ OLLAMA_API_URL = _read_ollama_url()
 
 log_lines = deque(maxlen=5000)
 smi_text = ["Loading GPU status..."]
+error_messages = {}
+error_lock = threading.Lock()
 _tail_proc = None  # module-level reference so we can terminate on exit
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -64,6 +66,21 @@ def build_visible_log_lines(width):
             visible.append((idx, segment))
     return visible
 
+def set_error(key, message):
+    with error_lock:
+        if message:
+            error_messages[key] = sanitize_render_text(message)
+        else:
+            error_messages.pop(key, None)
+
+def get_error_lines(width):
+    with error_lock:
+        messages = list(error_messages.values())
+    if not messages:
+        return []
+    text = " | ".join(messages)
+    return wrap_render_line(text, width)
+
 def tail_log():
     global _tail_proc
     import fcntl
@@ -71,6 +88,7 @@ def tail_log():
         _tail_proc = subprocess.Popen(
             ['tail', '-f', '-n', '2000', READABLE_LOG],
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         p = _tail_proc
         fd = p.stdout.fileno()
@@ -85,6 +103,7 @@ def tail_log():
                 chunk_bytes = None
             
             if chunk_bytes:
+                set_error("log", None)
                 try:
                     text = chunk_bytes.decode('utf-8', errors='replace')
                 except Exception:
@@ -110,9 +129,18 @@ def tail_log():
                     current_line = parts[-1]
                     log_lines.append(current_line.replace('\t', '    '))
             else:
+                if p.poll() is not None:
+                    error = ""
+                    if p.stderr is not None:
+                        try:
+                            error = p.stderr.read().decode('utf-8', errors='replace').strip()
+                        except Exception:
+                            error = ""
+                    set_error("log", error or "Log tail stopped")
+                    return
                 time.sleep(0.05)
     except Exception as e:
-        log_lines.append(f"Error tailing log: {e}")
+        set_error("log", f"Log tail error: {e}")
 
 def get_ollama_num_parallel():
     """Return OLLAMA_NUM_PARALLEL from the current env or the running ollama process env."""
@@ -120,7 +148,12 @@ def get_ollama_num_parallel():
     if val:
         return val
     try:
-        pid_out = subprocess.check_output(['pgrep', '-x', 'ollama'], text=True, timeout=2).strip()
+        pid_out = subprocess.check_output(
+            ['pgrep', '-x', 'ollama'],
+            text=True,
+            timeout=2,
+            stderr=subprocess.DEVNULL,
+        ).strip()
         if pid_out:
             pid = pid_out.splitlines()[0].strip()
             with open(f'/proc/{pid}/environ', 'rb') as f:
@@ -136,7 +169,13 @@ def parse_ollama_ps():
     """Run 'ollama ps' and return a dict of model_name -> processor_string."""
     result = {}
     try:
-        ps_output = subprocess.check_output(['ollama', 'ps'], text=True, errors="replace", timeout=3)
+        ps_output = subprocess.check_output(
+            ['ollama', 'ps'],
+            text=True,
+            errors="replace",
+            timeout=3,
+            stderr=subprocess.DEVNULL,
+        )
         ps_lines = ps_output.strip().splitlines()
         if len(ps_lines) < 2:
             return result
@@ -239,8 +278,10 @@ def poll_smi():
                         model_lines.append(f"    └ ctx:{ctx}{param_details_str}")
                 else:
                     model_lines = ["  (no active models)"]
+                set_error("ollama", None)
         except Exception:
             model_lines = ["  (could not reach Ollama API)"]
+            set_error("ollama", "Ollama is not reachable. Run 'ollama serve' to start it.")
 
         header = f"=== OLLAMA  parallel:{num_parallel} ==="
         smi_text = [header] + model_lines + [""] + hw_lines
@@ -287,11 +328,14 @@ def main(stdscr):
         if smi_lines > max_y // 2:
             smi_lines = max_y // 2
             
-        log_h = max_y - smi_lines - 2
+        render_width = max(1, max_x - 1)
+        active_errors = get_error_lines(render_width)
+        error_h = min(2, len(active_errors))
+
+        log_h = max_y - smi_lines - error_h - 2
         if log_h < 1:
             log_h = 1 # Prevent crash on tiny terminal
 
-        render_width = max(1, max_x - 1)
         visible_log_lines = build_visible_log_lines(render_width)
 
         # Handle input
@@ -391,6 +435,18 @@ def main(stdscr):
                 except curses.error:
                     pass
         
+        # Render Error Section
+        error_start = max_y - 1 - error_h
+        for i in range(error_h):
+            y = error_start + i
+            if y < 0:
+                continue
+            error_line = (" " + active_errors[i]).ljust(render_width)
+            try:
+                stdscr.addstr(y, 0, error_line[:render_width], curses.color_pair(3) | curses.A_BOLD)
+            except curses.error:
+                pass
+
         # Render Status Bar
         if max_y > 0:
             status_text = " [LIVE] (Up/Dn/PgUp/PgDn: Scroll | F: Follow | Q/Ctrl+C: Quit) " if auto_scroll else f" [PAUSED] (Line {scroll_pos}/{len(visible_log_lines)}) (Press F to follow) "

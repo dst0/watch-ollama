@@ -62,6 +62,20 @@ class LogSanitizationTests(unittest.TestCase):
 
         self.assertEqual(TUI.sanitize_render_text(code), code)
 
+    def test_error_lines_render_once_per_error_key(self):
+        TUI.error_messages.clear()
+
+        try:
+            TUI.set_error("ollama", "\x1b[31mOllama down\r")
+            TUI.set_error("ollama", "\x1b[31mOllama down\r")
+
+            self.assertEqual(TUI.get_error_lines(80), ["Ollama down"])
+
+            TUI.set_error("ollama", None)
+            self.assertEqual(TUI.get_error_lines(80), [])
+        finally:
+            TUI.error_messages.clear()
+
 
 if __name__ == "__main__":
     unittest.main()
