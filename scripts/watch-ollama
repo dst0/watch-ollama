@@ -8,6 +8,7 @@ import pathlib
 from collections import deque
 import urllib.request
 import json
+import re
 
 # Resolve paths relative to this script so the tool works for any user/install location
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
@@ -33,6 +34,35 @@ OLLAMA_API_URL = _read_ollama_url()
 log_lines = deque(maxlen=5000)
 smi_text = ["Loading GPU status..."]
 _tail_proc = None  # module-level reference so we can terminate on exit
+ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
+CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+def sanitize_render_text(text):
+    text = ANSI_ESCAPE_RE.sub("", text)
+    text = text.replace("\r", "")
+    text = text.replace("\t", "    ")
+    text = text.replace("<|im_start|>system", "### SYSTEM")
+    text = text.replace("<|im_start|>user", "### USER")
+    text = text.replace("<|im_start|>assistant", "### ASSISTANT")
+    text = text.replace("<|im_start|>", "")
+    text = text.replace("<|im_end|>", "")
+    text = text.replace("<|endoftext|>", "")
+    return CONTROL_CHARS_RE.sub("", text)
+
+def wrap_render_line(line, width):
+    line = sanitize_render_text(line)
+    if width <= 1:
+        return [line[:1]]
+    if not line:
+        return [""]
+    return [line[i:i + width] for i in range(0, len(line), width)]
+
+def build_visible_log_lines(width):
+    visible = []
+    for idx, line in enumerate(log_lines):
+        for segment in wrap_render_line(line, width):
+            visible.append((idx, segment))
+    return visible
 
 def tail_log():
     global _tail_proc
@@ -261,6 +291,9 @@ def main(stdscr):
         if log_h < 1:
             log_h = 1 # Prevent crash on tiny terminal
 
+        render_width = max(1, max_x - 1)
+        visible_log_lines = build_visible_log_lines(render_width)
+
         # Handle input
         key = stdscr.getch()
         
@@ -272,14 +305,14 @@ def main(stdscr):
                 auto_scroll = False
             elif key == curses.KEY_DOWN:
                 scroll_pos += 1
-                if scroll_pos >= max(0, len(log_lines) - log_h):
+                if scroll_pos >= max(0, len(visible_log_lines) - log_h):
                     auto_scroll = True
             elif key == curses.KEY_PPAGE:
                 scroll_pos = max(0, scroll_pos - log_h)
                 auto_scroll = False
             elif key == curses.KEY_NPAGE:
                 scroll_pos += log_h
-                if scroll_pos >= max(0, len(log_lines) - log_h):
+                if scroll_pos >= max(0, len(visible_log_lines) - log_h):
                     auto_scroll = True
             elif key == ord('f') or key == ord('F'):
                 auto_scroll = True
@@ -301,22 +334,22 @@ def main(stdscr):
         
         # Determine scroll position
         if auto_scroll:
-            scroll_pos = max(0, len(log_lines) - log_h)
+            scroll_pos = max(0, len(visible_log_lines) - log_h)
         else:
-            scroll_pos = min(scroll_pos, max(0, len(log_lines) - log_h))
+            scroll_pos = min(scroll_pos, max(0, len(visible_log_lines) - log_h))
             
         # Render Log
         for i in range(log_h):
             idx = scroll_pos + i
-            if idx < len(log_lines):
-                line = log_lines[idx]
+            if idx < len(visible_log_lines):
+                source_idx, line = visible_log_lines[idx]
                 
                 # Determine block color by scanning backwards (up to 500 lines)
                 block_color = curses.color_pair(0)
                 is_thought = False
                 
-                for j in range(idx, max(-1, idx - 500), -1):
-                    check_line = log_lines[j]
+                for j in range(source_idx, max(-1, source_idx - 500), -1):
+                    check_line = sanitize_render_text(log_lines[j])
                     if check_line.startswith("### USER") or check_line.startswith("USER:"):
                         block_color = curses.color_pair(1)
                         break
@@ -327,8 +360,8 @@ def main(stdscr):
                         break # Reset to default if we cross a separator
                 
                 # Check if we're inside a THOUGHT block
-                for j in range(idx, max(-1, idx - 500), -1):
-                    check_line = log_lines[j]
+                for j in range(source_idx, max(-1, source_idx - 500), -1):
+                    check_line = sanitize_render_text(log_lines[j])
                     if "<think>" in check_line or "[THOUGHT]" in check_line:
                         is_thought = True
                         if "</think>" in check_line or "[/THOUGHT]" in check_line:
@@ -354,13 +387,13 @@ def main(stdscr):
                     color = curses.color_pair(4) | curses.A_BOLD
                 
                 try:
-                    stdscr.addstr(smi_lines + 1 + i, 0, line[:max_x-1], color)
+                    stdscr.addstr(smi_lines + 1 + i, 0, line[:render_width], color)
                 except curses.error:
                     pass
         
         # Render Status Bar
         if max_y > 0:
-            status_text = " [LIVE] (Up/Dn/PgUp/PgDn: Scroll | F: Follow | Q/Ctrl+C: Quit) " if auto_scroll else f" [PAUSED] (Line {scroll_pos}/{len(log_lines)}) (Press F to follow) "
+            status_text = " [LIVE] (Up/Dn/PgUp/PgDn: Scroll | F: Follow | Q/Ctrl+C: Quit) " if auto_scroll else f" [PAUSED] (Line {scroll_pos}/{len(visible_log_lines)}) (Press F to follow) "
             status_line = status_text.ljust(max_x-1)
             try:
                 stdscr.addstr(max_y-1, 0, status_line[:max_x-1], curses.A_REVERSE)

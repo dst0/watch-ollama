@@ -11,6 +11,10 @@ _INSTALL_DIR = pathlib.Path(__file__).resolve().parent.parent
 RAW_LOG = "/var/log/ollama.log"
 READABLE_LOG = str(_INSTALL_DIR / "ollama_readable.log")
 
+SPECIAL_TOKENS_RE = re.compile(r"<\|(?:im_start|im_end|endoftext)\|>")
+BARE_IM_START_RE = re.compile(r"<\|im_start\|>(?!system|user|assistant)")
+CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
 def decode_go_string(s):
     try:
         b = s.encode("utf-8")
@@ -23,14 +27,27 @@ def decode_go_string(s):
         return s.replace('\\\\"', '"').replace('\\\\n', '\n').replace('\\\\t', '\t').replace('\\"', '"').replace('\\n', '\n').replace('\\t', '\t')
 
 def format_text(text):
+    text = sanitize_decoded_text(text)
     text = text.replace('<|im_start|>system', '\n### SYSTEM')
     text = text.replace('<|im_start|>user', '\n### USER')
     text = text.replace('<|im_start|>assistant', '\n### ASSISTANT')
     text = text.replace('<|im_end|>', '\n')
     text = text.replace('<|endoftext|>', '\n')
+    text = SPECIAL_TOKENS_RE.sub('', text)
     text = text.replace('\\u003c', '<').replace('\\u003e', '>')
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
+
+def sanitize_decoded_text(text):
+    text = text.replace('\\u003c', '<').replace('\\u003e', '>')
+    text = text.replace('\r', '')
+    text = text.replace('<|im_end|>', '').replace('<|endoftext|>', '')
+    text = BARE_IM_START_RE.sub('', text)
+    return CONTROL_CHARS_RE.sub('', text)
+
+def prompt_ends_with_assistant_marker(formatted_prompt):
+    lines = [line.strip() for line in formatted_prompt.splitlines() if line.strip()]
+    return bool(lines and lines[-1] in {"### ASSISTANT", "ASSISTANT:"})
 
 def parse_duration(d_str):
     """Parse a Go duration string (e.g. '1.5s', '500ms') into seconds."""
@@ -96,10 +113,13 @@ def main():
                     prompt_start_time = time.time()
                     eval_count = 0
                     in_generation = True
+                    needs_assistant_marker = not prompt_ends_with_assistant_marker(formatted_prompt)
 
                     with open(READABLE_LOG, "a") as out:
                         out.write(f"\n==================== {timestamp} [GENERATION STARTED] ====================\n")
                         out.write(formatted_prompt + "\n")
+                        if needs_assistant_marker:
+                            out.write("### ASSISTANT\n")
                         out.flush()
 
             # --- PREFILL ---
@@ -129,6 +149,7 @@ def main():
                         token = decode_go_string(val[1:-1])
                     else:
                         token = decode_go_string(val)
+                    token = sanitize_decoded_text(token)
                         
                     with open(READABLE_LOG, "a") as out:
                         out.write(token)
