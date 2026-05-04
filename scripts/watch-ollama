@@ -195,9 +195,10 @@ def main(stdscr):
     stdscr.keypad(True)
     stdscr.timeout(50)
     
-    # Show header briefly or wait for input if you like, 
-    # but here we'll just incorporate it into the loop setup
-    # ... rest of your code ...
+    # Setup Colors
+    curses.start_color()
+    curses.use_default_colors()
+    
     curses.init_pair(1, curses.COLOR_CYAN, -1)     # USER block
     curses.init_pair(2, curses.COLOR_GREEN, -1)    # ASSISTANT block
     curses.init_pair(3, curses.COLOR_YELLOW, -1)   # Separators
