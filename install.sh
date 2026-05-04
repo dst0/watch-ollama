@@ -62,20 +62,45 @@ else
     exit 1
 fi
 
-# Add scripts directory to PATH in shell rc files (idempotent)
+# Add scripts directory to PATH in the active shell's rc file (idempotent)
 add_to_path() {
     local rc_file="$1"
+    local shell_name="$2"
     local marker="# watch-ollama: PATH"
-    local path_line='export PATH="$HOME/.ollama-watch-tool/scripts:$PATH"'
-    if [ -f "$rc_file" ] && ! grep -qF "$marker" "$rc_file"; then
+    local path_line
+
+    if [ "$shell_name" = "fish" ]; then
+        path_line="set -gx PATH \$HOME/.ollama-watch-tool/scripts \$PATH"
+        mkdir -p "$(dirname "$rc_file")"
+        # fish config.fish may not exist yet; touch it so the -f check passes
+        touch "$rc_file"
+    else
+        path_line='export PATH="$HOME/.ollama-watch-tool/scripts:$PATH"'
+    fi
+
+    if ! grep -qF "$marker" "$rc_file"; then
         echo "" >> "$rc_file"
         echo "$marker" >> "$rc_file"
         echo "$path_line" >> "$rc_file"
         log "Added scripts to PATH in $rc_file"
     fi
 }
-add_to_path "$HOME/.bashrc"
-[ -f "$HOME/.zshrc" ] && add_to_path "$HOME/.zshrc"
+
+# Detect the user's current shell and target its rc file
+CURRENT_SHELL="$(basename "$SHELL")"
+case "$CURRENT_SHELL" in
+    bash)  SHELL_RC="$HOME/.bashrc" ;;
+    zsh)   SHELL_RC="$HOME/.zshrc" ;;
+    fish)  SHELL_RC="$HOME/.config/fish/config.fish" ;;
+    ksh)   SHELL_RC="$HOME/.kshrc" ;;
+    *)
+        log "Unknown shell '$CURRENT_SHELL', falling back to ~/.bashrc"
+        CURRENT_SHELL="bash"
+        SHELL_RC="$HOME/.bashrc"
+        ;;
+esac
+add_to_path "$SHELL_RC" "$CURRENT_SHELL"
+SOURCE_CMD="source $SHELL_RC"
 
 # Setup systemd service
 if [ -d "$SYSTEMD_DIR" ]; then
@@ -108,5 +133,5 @@ fi
 
 log "--- Installation v$VERSION Complete ---"
 log "Scripts installed to: $INSTALL_DIR"
-log "Run 'source ~/.bashrc' (or open a new terminal) to use watch-ollama directly."
+log "Run '$SOURCE_CMD' (or open a new terminal) to use watch-ollama directly."
 log "Log file: $LOG_FILE"

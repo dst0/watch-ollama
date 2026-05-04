@@ -33,7 +33,7 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
    ```
    *   The installer will prompt you for a clean installation if an existing one is detected.
    *   **Safe Reinstall**: Configuration files (`*.conf`) are preserved during clean installs.
-   *   The `scripts/` directory is automatically added to your `$PATH` (applied on next shell login or `source ~/.bashrc`).
+   *   The `scripts/` directory is automatically added to your `$PATH` in the rc file for your current shell (bash → `.bashrc`, zsh → `.zshrc`, fish → `config.fish`, ksh → `.kshrc`). Run `source <your-rc-file>` or open a new terminal to activate it.
    *   Logs are recorded to `/var/log/watch-ollama-install.log`.
 
 ## Usage
