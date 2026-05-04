@@ -17,18 +17,13 @@ ALIAS_MARKER_END="# watch-ollama: aliases-end"
 
 # Setup logging — all stdout/stderr goes to console AND the log file
 mkdir -p "$LOG_DIR"
-exec > >(
-    while IFS= read -r line; do
-        if [ -n "${NO_COLOR:-}" ]; then
-            printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g'
-        else
-            printf "%b\n" "$line"
-        fi
-        printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g' >> "$LOG_FILE"
-    done
-) 2>&1
+exec > >(tee -a "$LOG_FILE") 2>&1
 
-cat "$PROJECT_ROOT/scripts/header.txt"
+if [ -n "${NO_COLOR:-}" ]; then
+    sed -r 's/\\033\[[0-9;]*m//g' "$PROJECT_ROOT/scripts/header.txt"
+else
+    printf "%b\n" "$(cat "$PROJECT_ROOT/scripts/header.txt")"
+fi
 
 if [ -n "${NO_COLOR:-}" ]; then
     COLOR_INFO=""
@@ -86,10 +81,10 @@ prompt_yes_no() {
     local prompt_text="${COLOR_WARN}? ${prompt} [Y/n] ${COLOR_RESET}"
 
     if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-        printf "%b" "$prompt_text" > /dev/tty
+        printf "%b" "$prompt_text"
         IFS= read -r -n 1 reply < /dev/tty || reply=""
         if [ -n "$reply" ]; then
-            printf "%s\n" "$reply" > /dev/tty
+            printf "%s\n" "$reply"
         else
             printf "\n" > /dev/tty
         fi

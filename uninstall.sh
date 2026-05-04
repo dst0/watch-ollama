@@ -16,16 +16,7 @@ PATH_MARKER="# watch-ollama: PATH"
 LOG_FILE="/tmp/watch-ollama-uninstall-$(date +%Y%m%d-%H%M%S).log"
 
 # Setup logging — all stdout/stderr goes to console AND the /tmp log
-exec > >(
-    while IFS= read -r line; do
-        if [ -n "${NO_COLOR:-}" ]; then
-            printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g'
-        else
-            printf "%b\n" "$line"
-        fi
-        printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g' >> "$LOG_FILE"
-    done
-) 2>&1
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 # Read installed version if available
 VERSION="unknown"
@@ -89,10 +80,10 @@ prompt_yes_no() {
     local prompt_text="${COLOR_WARN}? ${prompt} [Y/n] ${COLOR_RESET}"
 
     if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-        printf "%b" "$prompt_text" > /dev/tty
+        printf "%b" "$prompt_text"
         IFS= read -r -n 1 reply < /dev/tty || reply=""
         if [ -n "$reply" ]; then
-            printf "%s\n" "$reply" > /dev/tty
+            printf "%s\n" "$reply"
         else
             printf "\n" > /dev/tty
         fi
