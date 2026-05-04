@@ -83,6 +83,22 @@ change() {
     emit "$COLOR_CHANGE" "[$(timestamp)] [v$VERSION] [CHANGE] $1"
 }
 
+prompt_yes_no() {
+    local prompt="$1"
+    local reply
+    local prompt_text="${COLOR_WARN}? ${prompt} ${COLOR_RESET}"
+
+    if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+        printf "%b" "$prompt_text" > /dev/tty
+        IFS= read -r reply < /dev/tty
+    else
+        printf "%b" "$prompt_text"
+        IFS= read -r reply
+    fi
+
+    [[ $reply == [yY] ]]
+}
+
 section "watch-ollama v$VERSION uninstaller"
 log "Uninstall log: $LOG_FILE"
 
@@ -164,8 +180,7 @@ if [ -d "$INSTALL_ROOT" ]; then
         warn "$INSTALL_ROOT appears to be a git repository. Skipping removal of root directory to prevent code loss."
     else
         echo ""
-        read -p "Remove entire install directory $INSTALL_ROOT (including all logs)? (y/n): " remove_root
-        if [[ $remove_root == [yY] ]]; then
+        if prompt_yes_no "Remove entire install directory $INSTALL_ROOT, including all logs? (y/n):"; then
             rm -rf "$INSTALL_ROOT"
             change "Removed directory tree: $INSTALL_ROOT"
         else

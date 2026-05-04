@@ -80,6 +80,22 @@ change() {
     emit "$COLOR_CHANGE" "[$(timestamp)] [v$VERSION] [CHANGE] $1"
 }
 
+prompt_yes_no() {
+    local prompt="$1"
+    local reply
+    local prompt_text="${COLOR_WARN}? ${prompt} ${COLOR_RESET}"
+
+    if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+        printf "%b" "$prompt_text" > /dev/tty
+        IFS= read -r reply < /dev/tty
+    else
+        printf "%b" "$prompt_text"
+        IFS= read -r reply
+    fi
+
+    [[ $reply == [yY] ]]
+}
+
 section "watch-ollama v$VERSION installer"
 change "Created/ensured directory: $LOG_DIR"
 log "Install log: $LOG_FILE"
@@ -88,8 +104,7 @@ log "Install log: $LOG_FILE"
 section "1. Existing installation check"
 if [ -d "$INSTALL_DIR" ]; then
     log "Existing installation found at $INSTALL_DIR."
-    read -p "Perform a clean install? (scripts removed, config files preserved) (y/n): " confirm
-    if [[ $confirm == [yY] ]]; then
+    if prompt_yes_no "Perform a clean install? Scripts are removed, config files are preserved. (y/n):"; then
         log "Cleaning up old installation (preserving *.conf files)..."
         while IFS= read -r -d '' f; do
             rm -f "$f"
