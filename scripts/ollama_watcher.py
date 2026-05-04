@@ -3,9 +3,12 @@ import os
 import time
 import json
 import sys
+import pathlib
 
+# Resolve paths relative to this script so the tool works for any user/install location
+_INSTALL_DIR = pathlib.Path(__file__).resolve().parent.parent
 RAW_LOG = "/var/log/ollama.log"
-READABLE_LOG = "/var/log/ollama_readable.log"
+READABLE_LOG = str(_INSTALL_DIR / "ollama_readable.log")
 
 def decode_go_string(s):
     try:
@@ -105,9 +108,16 @@ def main():
                         out.flush()
 
     except Exception as e:
-        with open(READABLE_LOG, "a") as out:
-            out.write(f"\nWATCHER FATAL ERROR: {e}\n")
-            out.flush()
+        try:
+            with open(READABLE_LOG, "a") as out:
+                out.write(f"\nWATCHER FATAL ERROR: {e}\n")
+                out.flush()
+        except Exception:
+            # If we can't write to the readable log either, emit to stderr so
+            # systemd's journal captures it.
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

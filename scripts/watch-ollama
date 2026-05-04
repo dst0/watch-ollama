@@ -4,17 +4,45 @@ import subprocess
 import time
 import threading
 import os
+import pathlib
 from collections import deque
 import urllib.request
 import json
 
+# Resolve paths relative to this script so the tool works for any user/install location
+SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
+HEADER_FILE = SCRIPTS_DIR / "header.txt"
+OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
+READABLE_LOG = str(SCRIPTS_DIR.parent / "ollama_readable.log")
+
+def _read_ollama_url():
+    """Read Ollama API base URL from ollama.conf, falling back to a sensible default."""
+    if OLLAMA_CONFIG_FILE.exists():
+        for raw in OLLAMA_CONFIG_FILE.read_text().splitlines():
+            line = raw.strip()
+            if line.startswith("OLLAMA_HOST="):
+                host = line.split("=", 1)[1].strip().strip('"')
+                if host:
+                    if not host.startswith("http://") and not host.startswith("https://"):
+                        host = "http://" + host
+                    return host.rstrip("/")
+    return "http://127.0.0.1:11435"
+
+OLLAMA_API_URL = _read_ollama_url()
+
 log_lines = deque(maxlen=5000)
 smi_text = ["Loading GPU status..."]
+_tail_proc = None  # module-level reference so we can terminate on exit
 
 def tail_log():
+    global _tail_proc
     import fcntl
     try:
-        p = subprocess.Popen(['tail', '-f', '-n', '2000', '/var/log/ollama_readable.log'], stdout=subprocess.PIPE)
+        _tail_proc = subprocess.Popen(
+            ['tail', '-f', '-n', '2000', READABLE_LOG],
+            stdout=subprocess.PIPE,
+        )
+        p = _tail_proc
         fd = p.stdout.fileno()
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
@@ -121,7 +149,7 @@ def poll_smi():
         # Model details from /api/ps
         model_lines = []
         try:
-            req = urllib.request.Request("http://127.0.0.1:11435/api/ps", method="GET")
+            req = urllib.request.Request(f"{OLLAMA_API_URL}/api/ps", method="GET")
             with urllib.request.urlopen(req, timeout=1) as response:
                 data = json.loads(response.read().decode())
                 models = data.get("models", [])
@@ -155,7 +183,7 @@ def poll_smi():
 def main(stdscr):
     # Load ASCII Header
     try:
-        with open(os.path.expanduser("~/.ollama-watch-tool/scripts/header.txt"), "r") as f:
+        with open(HEADER_FILE, "r") as f:
             header_lines = f.read().splitlines()
     except FileNotFoundError:
         header_lines = ["WATCH OLLAMA", "Monitoring, Benchmarking, & Management Suite"]
@@ -310,3 +338,10 @@ if __name__ == "__main__":
         curses.wrapper(main)
     except KeyboardInterrupt:
         pass
+    finally:
+        # Clean up the tail subprocess so we don't leave orphaned processes
+        if _tail_proc is not None:
+            try:
+                _tail_proc.terminate()
+            except Exception:
+                pass

@@ -8,15 +8,16 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 - **Background Watcher**: `ollama_watcher.py` logs processing service with systemd integration.
 - **Reporting & Stats**: `ollama_report.py` and `ollama_stats.py` for inference and hardware analysis.
 - **Utility Scripts**:
-  - `switch-gpu.sh`: Toggle between ROCm and Vulkan backends.
-  - `update-ollama.sh`: Automated Ollama update process.
-  - `setup-ollama.sh`: Configuration helper for setting ports/hosts.
+  - `switch-gpu`: Toggle between ROCm and Vulkan backends.
+  - `update-ollama`: Automated Ollama update process.
+  - `setup-ollama`: Interactive configuration helper for setting ports/hosts.
 
 ## Repository Structure
 - **`scripts/`**: All executable tools and utility scripts.
 - **`systemd/`**: Systemd unit files for background services.
 - **`VERSION`**: Tracks the project release version.
 - **`install.sh`**: The unified universal installer.
+- **`uninstall.sh`**: Removes all installed components.
 
 ## Installation
 
@@ -31,28 +32,48 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
    ```bash
    ./install.sh
    ```
-   *   The installer will prompt you for a clean installation if an existing one is detected. 
+   *   The installer will prompt you for a clean installation if an existing one is detected.
    *   **Safe Reinstall**: Configuration files (`*.conf`) are preserved during clean installs.
-   *   Logs are recorded to `/var/log/watch-ollama-install.log`.
+   *   Every system change is logged with a `[CHANGE]` tag — both to the console and to `~/.ollama-watch-tool/install.log`.
+   *   Named shell aliases (`watch-ollama`, `setup-ollama`, `switch-gpu`, `update-ollama`, `ollama-report`, `ollama-stats`) are written to the rc file for your current shell (bash → `.bashrc`, zsh → `.zshrc`, fish → `config.fish`, ksh → `.kshrc`). Run `source <your-rc-file>` or open a new terminal to activate them.
+
+## Uninstallation
+
+```bash
+./uninstall.sh
+```
+The uninstaller:
+- Removes all shell aliases (and any legacy PATH entry) from your rc file.
+- Stops, disables, and removes the `ollama-watcher` systemd service.
+- Removes the scripts directory (`~/.ollama-watch-tool/scripts/`).
+- Optionally removes the entire install directory (including logs).
+- Logs every change with a `[CHANGE]` tag to the console **and** to a timestamped file in `/tmp` (e.g. `/tmp/watch-ollama-uninstall-20260504-150000.log`).
 
 ## Usage
 
 ### Interactive Monitoring
 Run the TUI for real-time monitoring:
 ```bash
-~/.ollama-tools/scripts/watch-ollama
+watch-ollama
 ```
 
 ### Switching GPU Backends
 ```bash
-~/.ollama-tools/scripts/switch-gpu.sh [vulkan|rocm|status]
+switch-gpu [vulkan|rocm|status]
 ```
 
 ### Server Configuration
-To set your Ollama host and port (default 11435):
+Configure the Ollama bind address and port interactively (defaults: `0.0.0.0:11435`):
 ```bash
-~/.ollama-tools/scripts/setup-ollama.sh
+setup-ollama
 ```
+Or pass values directly:
+```bash
+setup-ollama 0.0.0.0 11435
+```
+This writes an `ollama.conf` file alongside the scripts so that `watch-ollama` automatically connects to the correct address.
+
+> **Note on port**: Ollama's built-in default is `11434`. This project defaults to `11435` to allow running a custom instance alongside a system-managed one. Adjust as needed.
 
 ## System Requirements
 - **OS**: Ubuntu Linux (or systemd-based Linux distributions)
