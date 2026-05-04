@@ -21,20 +21,40 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 
 cat "$PROJECT_ROOT/scripts/header.txt"
 
+timestamp() {
+    date +'%Y-%m-%d %H:%M:%S'
+}
+
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [v$VERSION] $1"
+    echo "[$(timestamp)] [v$VERSION] [INFO] $1"
+}
+
+warn() {
+    echo "[$(timestamp)] [v$VERSION] [WARN] $1"
+}
+
+error() {
+    echo "[$(timestamp)] [v$VERSION] [ERROR] $1"
+}
+
+section() {
+    echo ""
+    echo "================================================================"
+    echo "$1"
+    echo "================================================================"
 }
 
 # Every line tagged [CHANGE] represents a modification made to the system
 change() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [v$VERSION] [CHANGE] $1"
+    echo "[$(timestamp)] [v$VERSION] [CHANGE] $1"
 }
 
-log "--- Starting watch-ollama v$VERSION Installation ---"
+section "watch-ollama v$VERSION installer"
 change "Created/ensured directory: $LOG_DIR"
 log "Install log: $LOG_FILE"
 
 # ── Clean install ──────────────────────────────────────────────────────────────
+section "1. Existing installation check"
 if [ -d "$INSTALL_DIR" ]; then
     log "Existing installation found at $INSTALL_DIR."
     read -p "Perform a clean install? (scripts removed, config files preserved) (y/n): " confirm
@@ -47,9 +67,12 @@ if [ -d "$INSTALL_DIR" ]; then
     else
         log "Skipping clean-up, proceeding with update..."
     fi
+else
+    log "No existing installation found."
 fi
 
 # ── Create scripts directory ───────────────────────────────────────────────────
+section "2. Install files"
 if [ ! -d "$INSTALL_DIR" ]; then
     mkdir -p "$INSTALL_DIR"
     change "Created directory: $INSTALL_DIR"
@@ -64,7 +87,7 @@ change "Copied: VERSION → $INSTALL_DIR/VERSION"
 # ── Copy scripts ───────────────────────────────────────────────────────────────
 log "Copying scripts from $PROJECT_ROOT/scripts..."
 if [ ! -d "$PROJECT_ROOT/scripts" ]; then
-    log "ERROR: Scripts directory not found at $PROJECT_ROOT/scripts"
+    error "Scripts directory not found at $PROJECT_ROOT/scripts"
     exit 1
 fi
 for script in "$PROJECT_ROOT/scripts/"*; do
@@ -135,13 +158,14 @@ add_aliases() {
 }
 
 CURRENT_SHELL="$(basename "$SHELL")"
+section "3. Shell aliases"
 case "$CURRENT_SHELL" in
     bash)  SHELL_RC="$HOME/.bashrc" ;;
     zsh)   SHELL_RC="$HOME/.zshrc" ;;
     fish)  SHELL_RC="$HOME/.config/fish/config.fish" ;;
     ksh)   SHELL_RC="$HOME/.kshrc" ;;
     *)
-        log "Unknown shell '$CURRENT_SHELL', falling back to ~/.bashrc"
+        warn "Unknown shell '$CURRENT_SHELL', falling back to ~/.bashrc"
         CURRENT_SHELL="bash"
         SHELL_RC="$HOME/.bashrc"
         ;;
@@ -150,6 +174,7 @@ log "Detected shell: $CURRENT_SHELL  →  rc file: $SHELL_RC"
 add_aliases "$SHELL_RC" "$CURRENT_SHELL"
 
 # ── systemd service ────────────────────────────────────────────────────────────
+section "4. Systemd service"
 if [ -d "$SYSTEMD_DIR" ]; then
     if [ -f "$PROJECT_ROOT/systemd/$SERVICE_FILE" ]; then
         log "Installing/Updating systemd service..."
@@ -170,19 +195,21 @@ if [ -d "$SYSTEMD_DIR" ]; then
             if sudo systemctl start ollama-watcher; then
                 change "systemctl start ollama-watcher"
             else
-                log "Warning: Could not start ollama-watcher service (will start on next boot)."
+                warn "Could not start ollama-watcher service (will start on next boot)."
             fi
         fi
         log "Service installed and enabled."
     else
-        log "Warning: Service file not found at $PROJECT_ROOT/systemd/$SERVICE_FILE — skipping."
+        warn "Service file not found at $PROJECT_ROOT/systemd/$SERVICE_FILE — skipping."
     fi
 else
     log "systemd not found on this system — skipping service installation."
 fi
 
-log "--- Installation v$VERSION Complete ---"
-log "Scripts installed to : $INSTALL_DIR"
-log "Aliases registered in: $SHELL_RC"
-log "Run 'source $SHELL_RC' (or open a new terminal) to activate aliases."
-log "Install log          : $LOG_FILE"
+section "Installation complete"
+printf "%-22s %s\n" "Version:" "v$VERSION"
+printf "%-22s %s\n" "Scripts:" "$INSTALL_DIR"
+printf "%-22s %s\n" "Aliases:" "$SHELL_RC"
+printf "%-22s %s\n" "Install log:" "$LOG_FILE"
+echo ""
+log "Run 'source $SHELL_RC' or open a new terminal to activate aliases."
