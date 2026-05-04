@@ -40,6 +40,10 @@ echo "Setting Ollama Host to ${FULL_ADDR}..."
 sudo mkdir -p "$OLLAMA_SERVICE_DIR"
 printf "[Service]\nEnvironment=\"OLLAMA_HOST=%s\"\n" "$FULL_ADDR" | sudo tee "$OLLAMA_CONFIG" > /dev/null
 
+LOGGING_CONFIG="$OLLAMA_SERVICE_DIR/30-logging.conf"
+echo "Configuring Ollama logging to /var/log/ollama.log..."
+printf "[Service]\nEnvironment=\"OLLAMA_DEBUG=1\"\nStandardOutput=append:/var/log/ollama.log\nStandardError=append:/var/log/ollama.log\n" | sudo tee "$LOGGING_CONFIG" > /dev/null
+
 # Persist the URL so other tools (e.g. watch-ollama) can read it
 printf "OLLAMA_HOST=%s\n" "$FULL_ADDR" > "$OLLAMA_CONF"
 echo "Configuration saved to $OLLAMA_CONF"
