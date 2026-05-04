@@ -8,7 +8,7 @@ set -e
 # Project root based on the script's location
 PROJECT_ROOT="$(dirname "$(readlink -f "$0")")"
 VERSION=$(cat "$PROJECT_ROOT/VERSION")
-INSTALL_DIR="$HOME/.ollama-tools/scripts"
+INSTALL_DIR="$HOME/.ollama-watch-tool/scripts"
 SYSTEMD_DIR="/etc/systemd/system"
 SERVICE_FILE="ollama-watcher.service"
 LOG_FILE="/var/log/watch-ollama-install.log"
