@@ -1,34 +1,55 @@
 #!/bin/bash
 
 # watch-ollama Universal Installer
-# Installs monitoring scripts and systemd service
+# Installs monitoring scripts and systemd service with detailed logging
 
 set -e
 
 INSTALL_DIR="$HOME/.local/bin"
 SYSTEMD_DIR="/etc/systemd/system"
+LOG_FILE="/var/log/watch-ollama-install.log"
 
-echo "--- watch-ollama Installer ---"
+# Setup logging
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+}
+
+log "--- Starting watch-ollama Installation ---"
 
 # Ensure local bin exists
-mkdir -p "$INSTALL_DIR"
+if [ ! -d "$INSTALL_DIR" ]; then
+    log "Creating directory: $INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+fi
 
 # Copy scripts
-echo "Installing scripts to $INSTALL_DIR..."
-cp scripts/* "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR"/*
+log "Copying scripts to $INSTALL_DIR..."
+for script in scripts/*; do
+    if [ -f "$script" ]; then
+        filename=$(basename "$script")
+        log "Installing script: $filename"
+        cp "$script" "$INSTALL_DIR/"
+        chmod +x "$INSTALL_DIR/$filename"
+        log "Successfully installed and made executable: $filename"
+    fi
+done
 
 # Setup systemd service
 if [ -d "$SYSTEMD_DIR" ]; then
-    echo "Installing systemd service..."
+    log "Installing systemd service to $SYSTEMD_DIR..."
     sudo cp systemd/ollama-watcher.service "$SYSTEMD_DIR/"
+    log "Reloading systemd daemon..."
     sudo systemctl daemon-reload
+    log "Enabling ollama-watcher service..."
     sudo systemctl enable ollama-watcher
+    log "Starting ollama-watcher service..."
     sudo systemctl start ollama-watcher
-    echo "Service installed and started."
+    log "Service installed and started successfully."
 else
-    echo "Warning: Systemd directory not found. Skipping service installation."
+    log "Error: Systemd directory not found. Skipping service installation."
 fi
 
-echo "--- Installation Complete ---"
-echo "You can now run 'watch-ollama' from your terminal."
+log "--- Installation Complete ---"
+log "Log file available at: $LOG_FILE"
