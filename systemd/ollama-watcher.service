@@ -3,7 +3,7 @@ Description=Ollama Log Watcher
 After=ollama.service
 
 [Service]
-ExecStart=/usr/bin/python3 /home/dst/.ollama-tools/scripts/ollama_watcher.py
+ExecStart=/usr/bin/python3 /home/dst/.ollama-watch-suite/scripts/ollama_watcher.py
 User=dst
 Group=dst
 Restart=always
