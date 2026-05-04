@@ -36,6 +36,10 @@ fi
 # Ensure target directory exists
 mkdir -p "$INSTALL_DIR"
 
+# Copy VERSION file
+log "Copying version metadata..."
+cp "$PROJECT_ROOT/VERSION" "$INSTALL_DIR/"
+
 # Copy scripts
 log "Copying scripts from $PROJECT_ROOT/scripts..."
 if [ -d "$PROJECT_ROOT/scripts" ]; then
