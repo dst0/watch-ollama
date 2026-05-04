@@ -10,7 +10,6 @@ A collection of useful instruments for monitoring, benchmarking, and managing Ol
 - **Benchmarking**: `benchmark_ollama.py` for testing model performance.
 - **GPU Backend Management**: Easily switch between ROCm and Vulkan backends.
 - **Server Configuration**: Setup scripts for custom ports and host settings.
-
 ## Installation
 
 1. Clone the repository:
@@ -18,18 +17,11 @@ A collection of useful instruments for monitoring, benchmarking, and managing Ol
    git clone https://github.com/dst0/watch-ollama.git
    cd watch-ollama
    ```
-
-2. (Optional) Install the background watcher as a systemd service:
+2. **Important**: Before installing, verify the version in the `VERSION` file. If you are making changes, please update this file to reflect the new release.
+3. Run the installer:
    ```bash
-   sudo cp systemd/ollama-watcher.service /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable ollama-watcher
-   sudo systemctl start ollama-watcher
+   ./install.sh
    ```
-
-## Usage
-
-### Interactive Monitoring
 Run the TUI for real-time monitoring:
 ```bash
 ./scripts/watch-ollama
