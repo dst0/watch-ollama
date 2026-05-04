@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # watch-ollama Universal Installer
-# Versioned, location-independent installer with verification
+# Versioned, location-independent installer with safe reinstallation
 
 set -e
 
@@ -26,10 +26,14 @@ log "--- Starting watch-ollama v$VERSION Installation ---"
 # Verify Existing Installation
 if [ -d "$INSTALL_DIR" ]; then
     log "Existing installation found at $INSTALL_DIR."
-    read -p "Do you want to overwrite the existing installation? (y/n): " confirm
-    if [[ $confirm != [yY] ]]; then
-        log "Installation aborted by user."
-        exit 0
+    read -p "Do you want to perform a clean install? (Existing scripts will be removed, config files preserved) (y/n): " confirm
+    if [[ $confirm == [yY] ]]; then
+        log "Cleaning up old installation (preserving configs)..."
+        # Remove scripts but keep potential config files if they existed
+        # Assuming configs are not in /scripts, but just in case:
+        find "$INSTALL_DIR" -maxdepth 1 -type f ! -name "*.conf" -delete
+    else
+        log "Skipping clean-up, proceeding with update..."
     fi
 fi
 
@@ -59,7 +63,7 @@ fi
 # Setup systemd service
 if [ -d "$SYSTEMD_DIR" ]; then
     if [ -f "$PROJECT_ROOT/systemd/$SERVICE_FILE" ]; then
-        log "Installing systemd service..."
+        log "Installing/Updating systemd service..."
         sudo cp "$PROJECT_ROOT/systemd/$SERVICE_FILE" "$SYSTEMD_DIR/"
         sudo systemctl daemon-reload
         sudo systemctl enable ollama-watcher
