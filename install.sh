@@ -17,36 +17,67 @@ ALIAS_MARKER_END="# watch-ollama: aliases-end"
 
 # Setup logging — all stdout/stderr goes to console AND the log file
 mkdir -p "$LOG_DIR"
-exec > >(tee -a "$LOG_FILE") 2>&1
+exec > >(
+    while IFS= read -r line; do
+        if [ -n "${NO_COLOR:-}" ]; then
+            printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g'
+        else
+            printf "%b\n" "$line"
+        fi
+        printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g' >> "$LOG_FILE"
+    done
+) 2>&1
 
 cat "$PROJECT_ROOT/scripts/header.txt"
+
+if [ -n "${NO_COLOR:-}" ]; then
+    COLOR_INFO=""
+    COLOR_WARN=""
+    COLOR_ERROR=""
+    COLOR_CHANGE=""
+    COLOR_SECTION=""
+    COLOR_RESET=""
+else
+    COLOR_INFO=$'\033[36m'
+    COLOR_WARN=$'\033[33m'
+    COLOR_ERROR=$'\033[31m'
+    COLOR_CHANGE=$'\033[32m'
+    COLOR_SECTION=$'\033[1;34m'
+    COLOR_RESET=$'\033[0m'
+fi
+
+emit() {
+    local color="$1"
+    local text="$2"
+    printf "%s%s%s\n" "$color" "$text" "$COLOR_RESET"
+}
 
 timestamp() {
     date +'%Y-%m-%d %H:%M:%S'
 }
 
 log() {
-    echo "[$(timestamp)] [v$VERSION] [INFO] $1"
+    emit "$COLOR_INFO" "[$(timestamp)] [v$VERSION] [INFO] $1"
 }
 
 warn() {
-    echo "[$(timestamp)] [v$VERSION] [WARN] $1"
+    emit "$COLOR_WARN" "[$(timestamp)] [v$VERSION] [WARN] $1"
 }
 
 error() {
-    echo "[$(timestamp)] [v$VERSION] [ERROR] $1"
+    emit "$COLOR_ERROR" "[$(timestamp)] [v$VERSION] [ERROR] $1"
 }
 
 section() {
-    echo ""
-    echo "================================================================"
-    echo "$1"
-    echo "================================================================"
+    emit "$COLOR_SECTION" ""
+    emit "$COLOR_SECTION" "================================================================"
+    emit "$COLOR_SECTION" "$1"
+    emit "$COLOR_SECTION" "================================================================"
 }
 
 # Every line tagged [CHANGE] represents a modification made to the system
 change() {
-    echo "[$(timestamp)] [v$VERSION] [CHANGE] $1"
+    emit "$COLOR_CHANGE" "[$(timestamp)] [v$VERSION] [CHANGE] $1"
 }
 
 section "watch-ollama v$VERSION installer"

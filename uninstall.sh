@@ -16,7 +16,16 @@ PATH_MARKER="# watch-ollama: PATH"
 LOG_FILE="/tmp/watch-ollama-uninstall-$(date +%Y%m%d-%H%M%S).log"
 
 # Setup logging — all stdout/stderr goes to console AND the /tmp log
-exec > >(tee -a "$LOG_FILE") 2>&1
+exec > >(
+    while IFS= read -r line; do
+        if [ -n "${NO_COLOR:-}" ]; then
+            printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g'
+        else
+            printf "%b\n" "$line"
+        fi
+        printf "%b\n" "$line" | sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g' >> "$LOG_FILE"
+    done
+) 2>&1
 
 # Read installed version if available
 VERSION="unknown"
@@ -24,19 +33,61 @@ if [ -f "$INSTALL_DIR/VERSION" ]; then
     VERSION=$(cat "$INSTALL_DIR/VERSION")
 fi
 
+if [ -n "${NO_COLOR:-}" ]; then
+    COLOR_INFO=""
+    COLOR_WARN=""
+    COLOR_ERROR=""
+    COLOR_CHANGE=""
+    COLOR_SECTION=""
+    COLOR_RESET=""
+else
+    COLOR_INFO=$'\033[36m'
+    COLOR_WARN=$'\033[33m'
+    COLOR_ERROR=$'\033[31m'
+    COLOR_CHANGE=$'\033[32m'
+    COLOR_SECTION=$'\033[1;34m'
+    COLOR_RESET=$'\033[0m'
+fi
+
+emit() {
+    local color="$1"
+    local text="$2"
+    printf "%s%s%s\n" "$color" "$text" "$COLOR_RESET"
+}
+
+timestamp() {
+    date +'%Y-%m-%d %H:%M:%S'
+}
+
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [v$VERSION] $1"
+    emit "$COLOR_INFO" "[$(timestamp)] [v$VERSION] [INFO] $1"
+}
+
+warn() {
+    emit "$COLOR_WARN" "[$(timestamp)] [v$VERSION] [WARN] $1"
+}
+
+error() {
+    emit "$COLOR_ERROR" "[$(timestamp)] [v$VERSION] [ERROR] $1"
+}
+
+section() {
+    emit "$COLOR_SECTION" ""
+    emit "$COLOR_SECTION" "================================================================"
+    emit "$COLOR_SECTION" "$1"
+    emit "$COLOR_SECTION" "================================================================"
 }
 
 # Every line tagged [CHANGE] represents a modification made to the system
 change() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [v$VERSION] [CHANGE] $1"
+    emit "$COLOR_CHANGE" "[$(timestamp)] [v$VERSION] [CHANGE] $1"
 }
 
-log "--- watch-ollama Uninstaller ---"
+section "watch-ollama v$VERSION uninstaller"
 log "Uninstall log: $LOG_FILE"
 
 # ── Detect shell rc file ───────────────────────────────────────────────────────
+section "1. Shell aliases"
 CURRENT_SHELL="$(basename "$SHELL")"
 case "$CURRENT_SHELL" in
     bash)  SHELL_RC="$HOME/.bashrc" ;;
@@ -44,7 +95,7 @@ case "$CURRENT_SHELL" in
     fish)  SHELL_RC="$HOME/.config/fish/config.fish" ;;
     ksh)   SHELL_RC="$HOME/.kshrc" ;;
     *)
-        log "Unknown shell '$CURRENT_SHELL', assuming ~/.bashrc"
+        warn "Unknown shell '$CURRENT_SHELL', assuming ~/.bashrc"
         SHELL_RC="$HOME/.bashrc"
         ;;
 esac
@@ -64,10 +115,11 @@ if [ -f "$SHELL_RC" ]; then
         change "Removed legacy PATH entry from $SHELL_RC"
     fi
 else
-    log "Shell rc file not found: $SHELL_RC — skipping"
+    warn "Shell rc file not found: $SHELL_RC — skipping"
 fi
 
 # ── Remove systemd service ─────────────────────────────────────────────────────
+section "2. Systemd service"
 if [ -f "$SYSTEMD_DIR/$SERVICE_FILE" ]; then
     log "Removing systemd service: $SERVICE_FILE"
 
@@ -87,10 +139,11 @@ if [ -f "$SYSTEMD_DIR/$SERVICE_FILE" ]; then
     sudo systemctl daemon-reload
     change "systemctl daemon-reload"
 else
-    log "Service file not found: $SYSTEMD_DIR/$SERVICE_FILE — skipping"
+    warn "Service file not found: $SYSTEMD_DIR/$SERVICE_FILE — skipping"
 fi
 
 # ── Remove scripts directory ───────────────────────────────────────────────────
+section "3. Installed files"
 if [ -d "$INSTALL_DIR" ]; then
     log "Removing scripts: $INSTALL_DIR"
     while IFS= read -r -d '' f; do
@@ -101,13 +154,14 @@ if [ -d "$INSTALL_DIR" ]; then
         rmdir "$d" 2>/dev/null && change "Removed directory: $d" || true
     done
 else
-    log "Scripts directory not found: $INSTALL_DIR — skipping"
+    warn "Scripts directory not found: $INSTALL_DIR — skipping"
 fi
 
 # ── Optionally remove install root (contains install.log etc.) ─────────────────
+section "4. Install root"
 if [ -d "$INSTALL_ROOT" ]; then
     if [ -d "$INSTALL_ROOT/.git" ]; then
-        log "Warning: $INSTALL_ROOT appears to be a git repository. Skipping removal of root directory to prevent code loss."
+        warn "$INSTALL_ROOT appears to be a git repository. Skipping removal of root directory to prevent code loss."
     else
         echo ""
         read -p "Remove entire install directory $INSTALL_ROOT (including all logs)? (y/n): " remove_root
@@ -118,8 +172,14 @@ if [ -d "$INSTALL_ROOT" ]; then
             log "Kept: $INSTALL_ROOT"
         fi
     fi
+else
+    log "Install root not found: $INSTALL_ROOT — skipping"
 fi
 
-log "--- Uninstallation complete ---"
-log "Run 'source $SHELL_RC' (or open a new terminal) to deactivate aliases."
-log "Uninstall log: $LOG_FILE"
+section "Uninstallation complete"
+printf "%-22s %s\n" "Version:" "v$VERSION"
+printf "%-22s %s\n" "Scripts:" "$INSTALL_DIR"
+printf "%-22s %s\n" "Aliases:" "$SHELL_RC"
+printf "%-22s %s\n" "Uninstall log:" "$LOG_FILE"
+echo ""
+log "Run 'source $SHELL_RC' or open a new terminal to deactivate aliases."
