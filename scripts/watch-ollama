@@ -130,6 +130,40 @@ def parse_ollama_ps():
         pass
     return result
 
+def _get_model_params(model_name):
+    """Fetch model parameters from /api/show and return a formatted string."""
+    params_of_interest = [
+        "temperature", "num_batch", "num_gqa",
+        "top_k", "top_p", "tfs_z"
+    ]
+    try:
+        req_body = json.dumps({"name": model_name}).encode()
+        req = urllib.request.Request(f"{OLLAMA_API_URL}/api/show", data=req_body, method="POST")
+        req.add_header('Content-Type', 'application/json')
+        with urllib.request.urlopen(req, timeout=1) as response:
+            data = json.loads(response.read().decode())
+            param_str = data.get("parameters", "")
+            if not param_str:
+                return ""
+            
+            params = {}
+            for line in param_str.splitlines():
+                parts = line.strip().split(None, 1)
+                if len(parts) == 2:
+                    params[parts[0]] = parts[1]
+
+            param_list = []
+            for p in params_of_interest:
+                if p in params:
+                    # Shorten names for display
+                    short_name = p.replace("temperature", "temp").replace("num_", "")
+                    param_list.append(f"{short_name}:{params[p]}")
+            
+            return " | " + " ".join(param_list)
+
+    except Exception:
+        return ""
+
 def poll_smi():
     global smi_text
     while True:
@@ -168,9 +202,11 @@ def poll_smi():
                             processor = f"{gpu_pct}% GPU / {cpu_pct}% CPU"
 
                         size_str = f"{size / (1024**3):.1f} GB" if size > 0 else "? GB"
-                        model_lines.append(
-                            f"  {name}  |  {size_str}  |  {processor or 'unknown'}  |  ctx: {ctx}"
-                        )
+                        
+                        param_details_str = _get_model_params(name)
+
+                        model_lines.append(f"  {name} ({size_str} | {processor or 'unknown'})")
+                        model_lines.append(f"    └ ctx:{ctx}{param_details_str}")
                 else:
                     model_lines = ["  (no active models)"]
         except Exception:
