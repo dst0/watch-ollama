@@ -77,6 +77,12 @@ for script in "$PROJECT_ROOT/scripts/"*; do
     fi
 done
 
+# ── Copy uninstall.sh ──────────────────────────────────────────────────────────
+cp "$PROJECT_ROOT/uninstall.sh" "$INSTALL_DIR/uninstall.sh"
+change "Copied: uninstall.sh → $INSTALL_DIR/uninstall.sh"
+chmod +x "$INSTALL_DIR/uninstall.sh"
+change "chmod +x: $INSTALL_DIR/uninstall.sh"
+
 # ── Shell aliases ──────────────────────────────────────────────────────────────
 # Installs named aliases for each user-facing command into the shell rc file.
 # Replaces any legacy PATH export written by older versions of this installer.
@@ -108,6 +114,7 @@ add_aliases() {
             echo 'alias update-ollama "$HOME/.ollama-watch-tool/scripts/update-ollama.sh"'
             echo 'alias ollama-report "python3 $HOME/.ollama-watch-tool/scripts/ollama_report.py"'
             echo 'alias ollama-stats  "python3 $HOME/.ollama-watch-tool/scripts/ollama_stats.py"'
+            echo 'alias unwatch-ollama "$HOME/.ollama-watch-tool/scripts/uninstall.sh"'
             echo "$ALIAS_MARKER_END"
         } >> "$rc_file"
     else
@@ -120,6 +127,7 @@ add_aliases() {
             echo "alias update-ollama='\$HOME/.ollama-watch-tool/scripts/update-ollama.sh'"
             echo "alias ollama-report='python3 \$HOME/.ollama-watch-tool/scripts/ollama_report.py'"
             echo "alias ollama-stats='python3 \$HOME/.ollama-watch-tool/scripts/ollama_stats.py'"
+            echo "alias unwatch-ollama='\$HOME/.ollama-watch-tool/scripts/uninstall.sh'"
             echo "$ALIAS_MARKER_END"
         } >> "$rc_file"
     fi
