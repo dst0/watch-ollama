@@ -1,59 +1,62 @@
 # watch-ollama
 
-A collection of useful instruments for monitoring, benchmarking, and managing Ollama servers.
+A comprehensive collection of monitoring, benchmarking, and management tools for Ollama servers.
 
 ## Features
 
-- **Interactive TUI**: `watch-ollama` provides a real-time view of GPU status (via `amd-smi`) and readable Ollama logs.
-- **Background Watcher**: `ollama_watcher.py` processes raw Ollama logs into a readable format.
-- **Performance Reporting**: `ollama_report.py` and `ollama_stats.py` for analyzing inference performance and hardware usage.
-- **Benchmarking**: `benchmark_ollama.py` for testing model performance.
-- **GPU Backend Management**: Easily switch between ROCm and Vulkan backends.
-- **Server Configuration**: Setup scripts for custom ports and host settings.
+- **Interactive TUI**: `watch-ollama` provides real-time GPU/SMI monitoring and readable logs.
+- **Background Watcher**: `ollama_watcher.py` logs processing service with systemd integration.
+- **Reporting & Stats**: `ollama_report.py` and `ollama_stats.py` for inference and hardware analysis.
+- **Benchmarking**: `benchmark_ollama.py` for model performance evaluation.
+- **Utility Scripts**:
+  - `switch-gpu.sh`: Toggle between ROCm and Vulkan backends.
+  - `update-ollama.sh`: Automated Ollama update process.
+  - `setup-ollama.sh`: Configuration helper for setting ports/hosts.
+
+## Repository Structure
+- **`scripts/`**: All executable tools and utility scripts.
+- **`systemd/`**: Systemd unit files for background services.
+- **`VERSION`**: Tracks the project release version.
+- **`install.sh`**: The unified universal installer.
+
 ## Installation
 
-1. Clone the repository:
+1. **Clone the repository**:
    ```bash
-   git clone https://github.com/dst0/watch-ollama.git
-   cd watch-ollama
+   mkdir -p ~/dev/ollama-tools
+   cd ~/dev/ollama-tools
+   git clone https://github.com/dst0/watch-ollama.git .
    ```
-2. **Important**: Before installing, verify the version in the `VERSION` file. If you are making changes, please update this file to reflect the new release.
-3. Run the installer:
+2. **Versioning**: Verify the `VERSION` file in the repository root. If making modifications, increment this version.
+3. **Run the installer**:
    ```bash
    ./install.sh
    ```
+   *   The installer will prompt you for a clean installation if an existing one is detected. 
+   *   **Safe Reinstall**: Configuration files (`*.conf`) are preserved during clean installs.
+   *   Logs are recorded to `/var/log/watch-ollama-install.log`.
+
+## Usage
+
+### Interactive Monitoring
 Run the TUI for real-time monitoring:
 ```bash
-./scripts/watch-ollama
-```
-
-### Reporting
-Generate a status report:
-```bash
-python3 scripts/ollama_report.py
+~/.ollama-tools/scripts/watch-ollama
 ```
 
 ### Switching GPU Backends
-Switch to Vulkan:
 ```bash
-./scripts/switch-gpu.sh vulkan
-```
-Switch to ROCm:
-```bash
-./scripts/switch-gpu.sh rocm
+~/.ollama-tools/scripts/switch-gpu.sh [vulkan|rocm|status]
 ```
 
-### Updating Ollama
+### Server Configuration
+To set your Ollama host and port (default 11435):
 ```bash
-./scripts/update-ollama.sh
+~/.ollama-tools/scripts/setup-ollama.sh
 ```
 
 ## System Requirements
 - Ubuntu 24.10+
 - Python 3.x
 - Ollama
-- `amd-smi` (for AMD GPUs)
-- `curses` library (standard in Python)
-
-## Configuration
-The scripts assume Ollama is listening on `0.0.0.0:11435`. Use `./scripts/setup-ollama.sh` to apply this configuration to your system.
+- `amd-smi` (for AMD GPU monitoring)
