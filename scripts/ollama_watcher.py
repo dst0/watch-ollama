@@ -46,9 +46,12 @@ def format_text(text):
 
 def main():
     if not os.path.exists(READABLE_LOG):
-        with open(READABLE_LOG, 'a') as f_init:
-            f_init.write("--- Ollama Readable Log Started ---\n")
-        os.chmod(READABLE_LOG, 0o644)
+        try:
+            with open(READABLE_LOG, 'a') as f_init:
+                f_init.write("--- Ollama Readable Log Started ---\n")
+            os.chmod(READABLE_LOG, 0o644)
+        except Exception as e:
+            print(f"Error initializing readable log at {READABLE_LOG}: {e}", file=sys.stderr)
 
     try:
         f = open(RAW_LOG, "r", errors="replace")
@@ -75,6 +78,15 @@ def main():
                     with open(READABLE_LOG, "a") as out:
                         out.write(f"\n==================== {timestamp} [GENERATION STARTED] ====================\n")
                         out.write(formatted_prompt + "\n")
+                        out.flush()
+
+            # Match prefill progress (Custom Ollama only)
+            if 'level=INFO' in line and 'msg="prefill in progress"' in line:
+                match = re.search(r'processed=(\d+)\s+total=(\d+)', line)
+                if match:
+                    processed, total = match.groups()
+                    with open(READABLE_LOG, "a") as out:
+                        out.write(f"[Prefill Progress: {processed}/{total}]\n")
                         out.flush()
             
             # Match decoded generated tokens (the assistant's response)
@@ -113,8 +125,6 @@ def main():
                 out.write(f"\nWATCHER FATAL ERROR: {e}\n")
                 out.flush()
         except Exception:
-            # If we can't write to the readable log either, emit to stderr so
-            # systemd's journal captures it.
             import traceback
             traceback.print_exc()
         sys.exit(1)

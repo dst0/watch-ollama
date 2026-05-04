@@ -109,8 +109,12 @@ if [ -d "$INSTALL_ROOT" ]; then
     echo ""
     read -p "Remove entire install directory $INSTALL_ROOT (including all logs)? (y/n): " remove_root
     if [[ $remove_root == [yY] ]]; then
-        rm -rf "$INSTALL_ROOT"
-        change "Removed directory tree: $INSTALL_ROOT"
+        if [ -d "$INSTALL_ROOT/.git" ]; then
+            log "Warning: $INSTALL_ROOT appears to be a git repository. Skipping removal of root directory to prevent code loss."
+        else
+            rm -rf "$INSTALL_ROOT"
+            change "Removed directory tree: $INSTALL_ROOT"
+        fi
     else
         log "Kept: $INSTALL_ROOT"
     fi
