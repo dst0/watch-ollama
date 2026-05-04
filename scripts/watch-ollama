@@ -86,14 +86,24 @@ def poll_smi():
         time.sleep(0.5)
 
 def main(stdscr):
+    # ASCII Header
+    header = [
+        "   ___  __    __                __   __        __ ",
+        "  / _ \\/ /   / /  ___ ________ / /  / /  ___  / / ",
+        " / // / /__ / /__/ _ \\`/ __/ _ / /  / /__/ _ \\/ _ \\ ",
+        "/___/_____/____/\\_,_/_/  \\__,_/_/  /____/\\___/_.__/ ",
+        "",
+        "Welcome to watch-ollama. Press 'q' to quit."
+    ]
+    
     curses.curs_set(0)
     stdscr.nodelay(1)
     stdscr.keypad(True)
     stdscr.timeout(50)
     
-    # Setup Colors
-    curses.start_color()
-    curses.use_default_colors()
+    # Show header briefly or wait for input if you like, 
+    # but here we'll just incorporate it into the loop setup
+    # ... rest of your code ...
     curses.init_pair(1, curses.COLOR_CYAN, -1)     # USER block
     curses.init_pair(2, curses.COLOR_GREEN, -1)    # ASSISTANT block
     curses.init_pair(3, curses.COLOR_YELLOW, -1)   # Separators

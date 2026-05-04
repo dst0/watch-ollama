@@ -17,6 +17,14 @@ LOG_FILE="/var/log/watch-ollama-install.log"
 sudo touch "$LOG_FILE" 2>/dev/null || true
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+echo "
+   ___  __    __                __   __        __ 
+  / _ \/ /   / /  ___ ________ / /  / /  ___  / / 
+ / // / /__ / /__/ _ \`/ __/ _ / /  / /__/ _ \/ _ \ 
+/___/_____/____/\_,_/_/  \__,_/_/  /____/\___/_.__/ 
+                                                    
+"
+
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] [v$VERSION] $1"
 }
