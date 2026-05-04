@@ -5,7 +5,7 @@
 
 set -e
 
-INSTALL_DIR="$HOME/.local/bin"
+INSTALL_DIR="/home/dst/.ollama-tools/scripts"
 SYSTEMD_DIR="/etc/systemd/system"
 LOG_FILE="/var/log/watch-ollama-install.log"
 
