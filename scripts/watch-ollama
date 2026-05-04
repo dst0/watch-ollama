@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+import curses
+import subprocess
+import time
+import threading
+import os
+from collections import deque
+import urllib.request
+import json
+
+log_lines = deque(maxlen=5000)
+smi_text = ["Loading GPU status..."]
+
+def tail_log():
+    import fcntl
+    try:
+        p = subprocess.Popen(['tail', '-f', '-n', '2000', '/var/log/ollama_readable.log'], stdout=subprocess.PIPE)
+        fd = p.stdout.fileno()
+        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+        
+        current_line = ""
+        while True:
+            try:
+                chunk_bytes = p.stdout.read(4096)
+            except BlockingIOError:
+                chunk_bytes = None
+            
+            if chunk_bytes:
+                try:
+                    text = chunk_bytes.decode('utf-8', errors='replace')
+                except Exception:
+                    text = ""
+                
+                parts = text.split('\n')
+                if len(parts) == 1:
+                    current_line += parts[0]
+                    if log_lines:
+                        log_lines[-1] = current_line.replace('\t', '    ')
+                    else:
+                        log_lines.append(current_line.replace('\t', '    '))
+                else:
+                    current_line += parts[0]
+                    if log_lines:
+                        log_lines[-1] = current_line.replace('\t', '    ')
+                    else:
+                        log_lines.append(current_line.replace('\t', '    '))
+                    
+                    for part in parts[1:-1]:
+                        log_lines.append(part.replace('\t', '    '))
+                    
+                    current_line = parts[-1]
+                    log_lines.append(current_line.replace('\t', '    '))
+            else:
+                time.sleep(0.05)
+    except Exception as e:
+        log_lines.append(f"Error tailing log: {e}")
+
+def poll_smi():
+    global smi_text
+    while True:
+        try:
+            output = subprocess.check_output(['amd-smi'], text=True, errors="replace")
+            lines = output.splitlines()
+        except Exception:
+            lines = ["Error running amd-smi"]
+            
+        model_info = "No active models"
+        try:
+            req = urllib.request.Request("http://127.0.0.1:11435/api/ps", method="GET")
+            with urllib.request.urlopen(req, timeout=1) as response:
+                data = json.loads(response.read().decode())
+                models = data.get("models", [])
+                if models:
+                    model_strs = []
+                    for m in models:
+                        name = m.get("name", "unknown")
+                        ctx = m.get("context_length", 0)
+                        model_strs.append(f"{name} (ctx: {ctx})")
+                    model_info = ", ".join(model_strs)
+        except Exception:
+            model_info = "(Could not reach Ollama API)"
+            
+        header = f"=== ACTIVE MODELS: {model_info} ==="
+        smi_text = [header, ""] + lines
+        time.sleep(0.5)
+
+def main(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(1)
+    stdscr.keypad(True)
+    stdscr.timeout(50)
+    
+    # Setup Colors
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_CYAN, -1)     # USER block
+    curses.init_pair(2, curses.COLOR_GREEN, -1)    # ASSISTANT block
+    curses.init_pair(3, curses.COLOR_YELLOW, -1)   # Separators
+    curses.init_pair(4, curses.COLOR_MAGENTA, -1)  # THOUGHT block
+    
+    t_log = threading.Thread(target=tail_log, daemon=True)
+    t_log.start()
+    
+    t_smi = threading.Thread(target=poll_smi, daemon=True)
+    t_smi.start()
+
+    scroll_pos = 0
+    auto_scroll = True
+
+    while True:
+        max_y, max_x = stdscr.getmaxyx()
+        
+        # Estimate how many lines amd-smi takes
+        smi_lines = len(smi_text) if len(smi_text) > 0 else 15
+        if smi_lines > max_y // 2:
+            smi_lines = max_y // 2
+            
+        log_h = max_y - smi_lines - 2
+        if log_h < 1:
+            log_h = 1 # Prevent crash on tiny terminal
+
+        # Handle input
+        key = stdscr.getch()
+        
+        if key != -1:
+            if key == 3 or key == ord('q') or key == ord('Q') or key == 27: # Ctrl+C, q, Q, ESC
+                break
+            elif key == curses.KEY_UP:
+                scroll_pos = max(0, scroll_pos - 1)
+                auto_scroll = False
+            elif key == curses.KEY_DOWN:
+                scroll_pos += 1
+                if scroll_pos >= max(0, len(log_lines) - log_h):
+                    auto_scroll = True
+            elif key == curses.KEY_PPAGE:
+                scroll_pos = max(0, scroll_pos - log_h)
+                auto_scroll = False
+            elif key == curses.KEY_NPAGE:
+                scroll_pos += log_h
+                if scroll_pos >= max(0, len(log_lines) - log_h):
+                    auto_scroll = True
+            elif key == ord('f') or key == ord('F'):
+                auto_scroll = True
+            
+        stdscr.erase()
+        
+        # Render SMI
+        for i in range(min(smi_lines, len(smi_text))):
+            try:
+                stdscr.addstr(i, 0, smi_text[i][:max_x-1])
+            except curses.error:
+                pass
+            
+        if smi_lines < max_y:
+            try:
+                stdscr.addstr(smi_lines, 0, "-" * (max_x-1), curses.A_REVERSE)
+            except curses.error:
+                pass
+        
+        # Determine scroll position
+        if auto_scroll:
+            scroll_pos = max(0, len(log_lines) - log_h)
+        else:
+            scroll_pos = min(scroll_pos, max(0, len(log_lines) - log_h))
+            
+        # Render Log
+        for i in range(log_h):
+            idx = scroll_pos + i
+            if idx < len(log_lines):
+                line = log_lines[idx]
+                
+                # Determine block color by scanning backwards (up to 500 lines)
+                block_color = curses.color_pair(0)
+                is_thought = False
+                
+                for j in range(idx, max(-1, idx - 500), -1):
+                    check_line = log_lines[j]
+                    if check_line.startswith("### USER") or check_line.startswith("USER:"):
+                        block_color = curses.color_pair(1)
+                        break
+                    elif check_line.startswith("### ASSISTANT") or check_line.startswith("ASSISTANT:") or check_line.startswith("### SYSTEM"):
+                        block_color = curses.color_pair(2)
+                        break
+                    elif check_line.startswith("====================") or check_line.startswith("--------------------------------------------------------------------------------"):
+                        break # Reset to default if we cross a separator
+                
+                # Check if we're inside a THOUGHT block
+                for j in range(idx, max(-1, idx - 500), -1):
+                    check_line = log_lines[j]
+                    if "<think>" in check_line or "[THOUGHT]" in check_line:
+                        is_thought = True
+                        if "</think>" in check_line or "[/THOUGHT]" in check_line:
+                            if max(check_line.rfind("</think>"), check_line.rfind("[/THOUGHT]")) > max(check_line.rfind("<think>"), check_line.rfind("[THOUGHT]")):
+                                is_thought = False
+                        break
+                    elif "</think>" in check_line or "[/THOUGHT]" in check_line:
+                        is_thought = False
+                        break
+                    elif check_line.startswith("====================") or check_line.startswith("--------------------------------------------------------------------------------"):
+                        is_thought = False
+                        break
+
+                # Apply base block color
+                color = curses.color_pair(4) if is_thought else block_color
+                
+                # Override color for specific marker lines
+                if line.startswith("### USER") or line.startswith("USER:") or line.startswith("### ASSISTANT") or line.startswith("ASSISTANT:") or line.startswith("### SYSTEM"):
+                    color = color | curses.A_BOLD
+                elif line.startswith("====================") or line.startswith("--------------------------------------------------------------------------------"):
+                    color = curses.color_pair(3) | curses.A_BOLD
+                elif "<think>" in line or "</think>" in line or "[THOUGHT]" in line or "[/THOUGHT]" in line:
+                    color = curses.color_pair(4) | curses.A_BOLD
+                
+                try:
+                    stdscr.addstr(smi_lines + 1 + i, 0, line[:max_x-1], color)
+                except curses.error:
+                    pass
+        
+        # Render Status Bar
+        if max_y > 0:
+            status_text = " [LIVE] (Up/Dn/PgUp/PgDn: Scroll | F: Follow | Q/Ctrl+C: Quit) " if auto_scroll else f" [PAUSED] (Line {scroll_pos}/{len(log_lines)}) (Press F to follow) "
+            status_line = status_text.ljust(max_x-1)
+            try:
+                stdscr.addstr(max_y-1, 0, status_line[:max_x-1], curses.A_REVERSE)
+            except curses.error:
+                pass
+        
+        stdscr.refresh()
+        time.sleep(0.05)
+
+if __name__ == "__main__":
+    try:
+        curses.wrapper(main)
+    except KeyboardInterrupt:
+        pass

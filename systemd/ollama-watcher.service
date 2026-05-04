@@ -1,0 +1,13 @@
+[Unit]
+Description=Ollama Log Watcher
+After=ollama.service
+
+[Service]
+ExecStart=/usr/bin/python3 /home/dst/ollama_watcher.py
+User=dst
+Group=dst
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
