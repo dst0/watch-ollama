@@ -3,9 +3,12 @@ import os
 import time
 import json
 import sys
+import pathlib
 
+# Resolve paths relative to this script so the tool works for any user/install location
+_INSTALL_DIR = pathlib.Path(__file__).resolve().parent.parent
 RAW_LOG = "/var/log/ollama.log"
-READABLE_LOG = "/var/log/ollama_readable.log"
+READABLE_LOG = str(_INSTALL_DIR / "ollama_readable.log")
 
 def decode_go_string(s):
     try:

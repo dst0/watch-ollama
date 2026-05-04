@@ -11,10 +11,11 @@ VERSION=$(cat "$PROJECT_ROOT/VERSION")
 INSTALL_DIR="$HOME/.ollama-watch-tool/scripts"
 SYSTEMD_DIR="/etc/systemd/system"
 SERVICE_FILE="ollama-watcher.service"
-LOG_FILE="/var/log/watch-ollama-install.log"
+LOG_DIR="$HOME/.ollama-watch-tool"
+LOG_FILE="$LOG_DIR/install.log"
 
-# Setup logging
-sudo touch "$LOG_FILE" 2>/dev/null || true
+# Setup logging (log goes to the user-writable install folder, no sudo needed)
+mkdir -p "$LOG_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 cat "$PROJECT_ROOT/scripts/header.txt"

@@ -13,7 +13,7 @@ import json
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 HEADER_FILE = SCRIPTS_DIR / "header.txt"
 OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
-READABLE_LOG = "/var/log/ollama_readable.log"
+READABLE_LOG = str(SCRIPTS_DIR.parent / "ollama_readable.log")
 
 def _read_ollama_url():
     """Read Ollama API base URL from ollama.conf, falling back to a sensible default."""
