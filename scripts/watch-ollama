@@ -4,17 +4,45 @@ import subprocess
 import time
 import threading
 import os
+import pathlib
 from collections import deque
 import urllib.request
 import json
 
+# Resolve paths relative to this script so the tool works for any user/install location
+SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
+HEADER_FILE = SCRIPTS_DIR / "header.txt"
+OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
+READABLE_LOG = str(SCRIPTS_DIR.parent / "ollama_readable.log")
+
+def _read_ollama_url():
+    """Read Ollama API base URL from ollama.conf, falling back to a sensible default."""
+    if OLLAMA_CONFIG_FILE.exists():
+        for raw in OLLAMA_CONFIG_FILE.read_text().splitlines():
+            line = raw.strip()
+            if line.startswith("OLLAMA_HOST="):
+                host = line.split("=", 1)[1].strip().strip('"')
+                if host:
+                    if not host.startswith("http://") and not host.startswith("https://"):
+                        host = "http://" + host
+                    return host.rstrip("/")
+    return "http://127.0.0.1:11435"
+
+OLLAMA_API_URL = _read_ollama_url()
+
 log_lines = deque(maxlen=5000)
 smi_text = ["Loading GPU status..."]
+_tail_proc = None  # module-level reference so we can terminate on exit
 
 def tail_log():
+    global _tail_proc
     import fcntl
     try:
-        p = subprocess.Popen(['tail', '-f', '-n', '2000', '/var/log/ollama_readable.log'], stdout=subprocess.PIPE)
+        _tail_proc = subprocess.Popen(
+            ['tail', '-f', '-n', '2000', READABLE_LOG],
+            stdout=subprocess.PIPE,
+        )
+        p = _tail_proc
         fd = p.stdout.fileno()
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
@@ -56,39 +84,106 @@ def tail_log():
     except Exception as e:
         log_lines.append(f"Error tailing log: {e}")
 
+def get_ollama_num_parallel():
+    """Return OLLAMA_NUM_PARALLEL from the current env or the running ollama process env."""
+    val = os.environ.get("OLLAMA_NUM_PARALLEL")
+    if val:
+        return val
+    try:
+        pid_out = subprocess.check_output(['pgrep', '-x', 'ollama'], text=True, timeout=2).strip()
+        if pid_out:
+            pid = pid_out.splitlines()[0].strip()
+            with open(f'/proc/{pid}/environ', 'rb') as f:
+                env_data = f.read()
+            for entry in env_data.split(b'\x00'):
+                if entry.startswith(b'OLLAMA_NUM_PARALLEL='):
+                    return entry.split(b'=', 1)[1].decode()
+    except Exception:
+        pass
+    return "auto"
+
+def parse_ollama_ps():
+    """Run 'ollama ps' and return a dict of model_name -> processor_string."""
+    result = {}
+    try:
+        ps_output = subprocess.check_output(['ollama', 'ps'], text=True, errors="replace", timeout=3)
+        ps_lines = ps_output.strip().splitlines()
+        if len(ps_lines) < 2:
+            return result
+        header_line = ps_lines[0].upper()
+        proc_col = header_line.find("PROCESSOR")
+        until_col = header_line.find("UNTIL")
+        if proc_col < 0:
+            return result
+        for row in ps_lines[1:]:
+            if not row.strip():
+                continue
+            name_field = row[:proc_col].strip()
+            name = name_field.split()[0] if name_field else ""
+            if until_col > proc_col:
+                processor = row[proc_col:until_col].strip()
+            else:
+                processor = row[proc_col:].strip()
+            if name:
+                result[name] = processor
+    except Exception:
+        pass
+    return result
+
 def poll_smi():
     global smi_text
     while True:
+        # amd-smi output
         try:
             output = subprocess.check_output(['amd-smi'], text=True, errors="replace")
-            lines = output.splitlines()
+            hw_lines = output.splitlines()
         except Exception:
-            lines = ["Error running amd-smi"]
-            
-        model_info = "No active models"
+            hw_lines = ["(amd-smi unavailable)"]
+
+        # Parallel sessions allowed
+        num_parallel = get_ollama_num_parallel()
+
+        # GPU/CPU split from 'ollama ps'
+        ps_info = parse_ollama_ps()
+
+        # Model details from /api/ps
+        model_lines = []
         try:
-            req = urllib.request.Request("http://127.0.0.1:11435/api/ps", method="GET")
+            req = urllib.request.Request(f"{OLLAMA_API_URL}/api/ps", method="GET")
             with urllib.request.urlopen(req, timeout=1) as response:
                 data = json.loads(response.read().decode())
                 models = data.get("models", [])
                 if models:
-                    model_strs = []
                     for m in models:
                         name = m.get("name", "unknown")
                         ctx = m.get("context_length", 0)
-                        model_strs.append(f"{name} (ctx: {ctx})")
-                    model_info = ", ".join(model_strs)
+                        size = m.get("size", 0)
+                        size_vram = m.get("size_vram", 0)
+
+                        # GPU/CPU split: prefer 'ollama ps', fall back to size_vram ratio
+                        processor = ps_info.get(name, "")
+                        if not processor and size > 0:
+                            gpu_pct = int(round(size_vram / size * 100))
+                            cpu_pct = 100 - gpu_pct
+                            processor = f"{gpu_pct}% GPU / {cpu_pct}% CPU"
+
+                        size_str = f"{size / (1024**3):.1f} GB" if size > 0 else "? GB"
+                        model_lines.append(
+                            f"  {name}  |  {size_str}  |  {processor or 'unknown'}  |  ctx: {ctx}"
+                        )
+                else:
+                    model_lines = ["  (no active models)"]
         except Exception:
-            model_info = "(Could not reach Ollama API)"
-            
-        header = f"=== ACTIVE MODELS: {model_info} ==="
-        smi_text = [header, ""] + lines
+            model_lines = ["  (could not reach Ollama API)"]
+
+        header = f"=== OLLAMA  parallel:{num_parallel} ==="
+        smi_text = [header] + model_lines + [""] + hw_lines
         time.sleep(0.5)
 
 def main(stdscr):
     # Load ASCII Header
     try:
-        with open(os.path.expanduser("~/.ollama-watch-tool/scripts/header.txt"), "r") as f:
+        with open(HEADER_FILE, "r") as f:
             header_lines = f.read().splitlines()
     except FileNotFoundError:
         header_lines = ["WATCH OLLAMA", "Monitoring, Benchmarking, & Management Suite"]
@@ -243,3 +338,10 @@ if __name__ == "__main__":
         curses.wrapper(main)
     except KeyboardInterrupt:
         pass
+    finally:
+        # Clean up the tail subprocess so we don't leave orphaned processes
+        if _tail_proc is not None:
+            try:
+                _tail_proc.terminate()
+            except Exception:
+                pass

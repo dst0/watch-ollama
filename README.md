@@ -8,9 +8,10 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 - **Background Watcher**: `ollama_watcher.py` logs processing service with systemd integration.
 - **Reporting & Stats**: `ollama_report.py` and `ollama_stats.py` for inference and hardware analysis.
 - **Utility Scripts**:
-  - `switch-gpu.sh`: Toggle between ROCm and Vulkan backends.
-  - `update-ollama.sh`: Automated Ollama update process.
-  - `setup-ollama.sh`: Configuration helper for setting ports/hosts.
+  - `switch-gpu`: Toggle between ROCm and Vulkan backends.
+  - `update-ollama`: Automated Ollama update process.
+  - `setup-ollama`: Interactive configuration helper for setting ports/hosts.
+  - `make-modelfile`: Interactive generator for Ollama Modelfiles.
 
 ## Repository Structure
 - **`scripts/`**: All executable tools and utility scripts.
@@ -26,8 +27,13 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
    cd ~/dev/ollama-tools
    git clone https://github.com/dst0/watch-ollama.git .
    ```
-2. **Versioning**: Verify the `VERSION` file in the repository root. If making modifications, increment this version.
-3. **Run the installer**:
+2. **Setup Alias** (optional but recommended):
+   Add this to your `~/.zshrc` or `~/.bashrc`:
+   ```bash
+   alias make-modelfile='python3 ~/.ollama-watch-tool/scripts/make-modelfile.py'
+   ```
+3. **Versioning**: Verify the `VERSION` file in the repository root. If making modifications, increment this version.
+4. **Run the installer**:
    ```bash
    ./install.sh
    ```
@@ -40,18 +46,26 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 ### Interactive Monitoring
 Run the TUI for real-time monitoring:
 ```bash
-~/.ollama-watch-tool/scripts/watch-ollama
+watch-ollama
+```
+
+### Generating Modelfiles
+Use the interactive tool to create custom Modelfiles from your GGUF models:
+```bash
+make-modelfile
+# Or, if alias not set:
+python3 ~/.ollama-watch-tool/scripts/make-modelfile.py
 ```
 
 ### Switching GPU Backends
 ```bash
-~/.ollama-watch-tool/scripts/switch-gpu.sh [vulkan|rocm|status]
+switch-gpu [vulkan|rocm|status]
 ```
 
 ### Server Configuration
 To set your Ollama host and port (default 11435):
 ```bash
-~/.ollama-watch-tool/scripts/setup-ollama.sh
+setup-ollama
 ```
 
 ## System Requirements
