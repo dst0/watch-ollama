@@ -35,6 +35,7 @@ log_lines = deque(maxlen=5000)
 smi_text = ["Loading GPU status..."]
 error_messages = {}
 log_lock = threading.Lock()
+smi_lock = threading.Lock()
 error_lock = threading.Lock()
 _tail_proc = None  # module-level reference so we can terminate on exit
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
@@ -83,6 +84,15 @@ def get_error_lines(width):
         return []
     text = " | ".join(messages)
     return wrap_render_line(text, width)
+
+def set_smi_text(lines):
+    global smi_text
+    with smi_lock:
+        smi_text = lines
+
+def get_smi_snapshot():
+    with smi_lock:
+        return list(smi_text)
 
 def tail_log():
     global _tail_proc
@@ -238,7 +248,6 @@ def _get_model_params(model_name):
         return ""
 
 def poll_smi():
-    global smi_text
     while True:
         # amd-smi output
         try:
@@ -288,7 +297,7 @@ def poll_smi():
             set_error("ollama", "Ollama is not reachable. Run 'ollama serve' to start it.")
 
         header = f"=== OLLAMA  parallel:{num_parallel} ==="
-        smi_text = [header] + model_lines + [""] + hw_lines
+        set_smi_text([header] + model_lines + [""] + hw_lines)
         time.sleep(0.5)
 
 def main(stdscr):
@@ -323,14 +332,19 @@ def main(stdscr):
 
     scroll_pos = 0
     auto_scroll = True
+    reserved_smi_lines_by_height = {}
 
     while True:
         max_y, max_x = stdscr.getmaxyx()
-        
-        # Estimate how many lines amd-smi takes
-        smi_lines = len(smi_text) if len(smi_text) > 0 else 15
-        if smi_lines > max_y // 2:
-            smi_lines = max_y // 2
+        smi_snapshot = get_smi_snapshot()
+
+        # Keep the top telemetry panel from jumping when Ollama briefly changes
+        # model/prompt rows. Reset the reservation only when the terminal height changes.
+        max_smi_lines = max(1, max_y // 2)
+        observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
+        reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
+        smi_lines = min(max_smi_lines, max(reserved_smi_lines, observed_smi_lines))
+        reserved_smi_lines_by_height[max_y] = smi_lines
             
         render_width = max(1, max_x - 1)
         active_errors = get_error_lines(render_width)
@@ -368,9 +382,10 @@ def main(stdscr):
         stdscr.erase()
         
         # Render SMI
-        for i in range(min(smi_lines, len(smi_text))):
+        for i in range(smi_lines):
+            line = smi_snapshot[i] if i < len(smi_snapshot) else ""
             try:
-                stdscr.addstr(i, 0, smi_text[i][:max_x-1])
+                stdscr.addstr(i, 0, line[:max_x-1])
             except curses.error:
                 pass
             
