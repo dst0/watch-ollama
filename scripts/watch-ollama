@@ -821,36 +821,61 @@ def main(stdscr):
         for i in range(smi_lines):
             line = smi_snapshot[i] if i < len(smi_snapshot) else ""
             try:
-                # Apply coloring for telemetry line
                 if "C:" in line and "R:" in line:
-                    # Parse line: "C: 4.1% 43.1°C | R: 15.2G/32.0G ..."
-                    parts = line.split("|")
+                    # Robust parsing for the telemetry oneliner
+                    # Format: C: 4.1% 43.1°C | R: 15.2G/32.0G | adapter:58°C ...
+                    parts = line.split(" | ")
+                    stdscr.addstr(i, 0, "") # Reset position
                     
-                    stdscr.addstr(i, 0, "C:", curses.A_BOLD)
-                    
-                    # C part
-                    c_parts = parts[0].replace("C:", "").split()
-                    # pct
-                    pct = float(c_parts[0].replace("%", ""))
-                    stdscr.addstr(i, 2, c_parts[0], get_val_color(pct, 50, 80))
-                    # temp
-                    stdscr.addstr(i, 2+len(c_parts[0])+1, c_parts[1], get_temp_color(float(c_parts[1].replace("°C", ""))))
-                    
-                    # R part
-                    stdscr.addstr(i, 2+len(c_parts[0])+1+len(c_parts[1])+1, " | R:", curses.A_BOLD)
-                    r_str = parts[1].replace("R:", "").strip()
-                    # ram used pct
-                    ram_vals = r_str.split('/')[0].replace("G", ""), r_str.split('/')[1].replace("G", "")
-                    ram_pct = (float(ram_vals[0]) / float(ram_vals[1])) * 100
-                    stdscr.addstr(i, 2+len(c_parts[0])+1+len(c_parts[1])+1+5, r_str, get_val_color(ram_pct, 60, 90))
-                    
-                    # Rest of line (sys temps)
-                    if len(parts) > 2:
-                        stdscr.addstr(i, 2+len(c_parts[0])+1+len(c_parts[1])+1+5+len(r_str)+1, " | " + "|".join(parts[2:]))
+                    curr_x = 0
+                    for idx, part in enumerate(parts):
+                        if idx > 0:
+                            stdscr.addstr(i, curr_x, " | ")
+                            curr_x += 3
+                        
+                        if part.startswith("C:"):
+                            stdscr.addstr(i, curr_x, "C:", curses.A_BOLD)
+                            curr_x += 2
+                            sub = part[2:].strip().split() # ["4.1%", "43.1°C"]
+                            # Load %
+                            val_str = sub[0]
+                            val = float(val_str.replace("%", ""))
+                            stdscr.addstr(i, curr_x, " " + val_str, get_val_color(val, 50, 80))
+                            curr_x += len(val_str) + 1
+                            # Temp
+                            temp_str = sub[1]
+                            t_val = float(temp_str.replace("°C", ""))
+                            stdscr.addstr(i, curr_x, " " + temp_str, get_temp_color(t_val))
+                            curr_x += len(temp_str) + 1
+                        elif part.startswith("R:"):
+                            stdscr.addstr(i, curr_x, "R:", curses.A_BOLD)
+                            curr_x += 2
+                            r_val_str = part[2:].strip() # "15.2G/32.0G"
+                            v1, v2 = r_val_str.split('/')
+                            # We show available/total, but color by usage %
+                            u_pct = (1.0 - float(v1.replace("G", "")) / float(v2.replace("G", ""))) * 100
+                            stdscr.addstr(i, curr_x, " " + r_val_str, get_val_color(u_pct, 60, 90))
+                            curr_x += len(r_val_str) + 1
+                        else:
+                            # System temps: "adapter:58°C"
+                            s_parts = part.split()
+                            for s_idx, s_p in enumerate(s_parts):
+                                if s_idx > 0:
+                                    stdscr.addstr(i, curr_x, " ")
+                                    curr_x += 1
+                                if ":" in s_p:
+                                    name, t_val_str = s_p.split(":")
+                                    stdscr.addstr(i, curr_x, name + ":")
+                                    curr_x += len(name) + 1
+                                    t_val = float(t_val_str.replace("°C", ""))
+                                    stdscr.addstr(i, curr_x, t_val_str, get_temp_color(t_val))
+                                    curr_x += len(t_val_str)
+                                else:
+                                    stdscr.addstr(i, curr_x, s_p)
+                                    curr_x += len(s_p)
                 else:
                     stdscr.addstr(i, 0, line[:max_x-1])
             except (curses.error, ValueError, IndexError):
-                # Fallback to standard line render if parsing fails
                 try:
                     stdscr.addstr(i, 0, line[:max_x-1])
                 except curses.error:
