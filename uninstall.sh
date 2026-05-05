@@ -7,6 +7,7 @@ set -e
 
 INSTALL_DIR="$HOME/.ollama-watch-tool/scripts"
 INSTALL_ROOT="$HOME/.ollama-watch-tool"
+LEGACY_BIN="$HOME/.local/bin/watch-ollama"
 SYSTEMD_DIR="/etc/systemd/system"
 SERVICE_FILE="ollama-watcher.service"
 ALIAS_MARKER_START="# watch-ollama: aliases"
@@ -128,6 +129,17 @@ if [ -f "$SHELL_RC" ]; then
     fi
 else
     warn "Shell rc file not found: $SHELL_RC — skipping"
+fi
+
+# ── Remove legacy PATH executable if it belongs to watch-ollama ────────────────
+if [ -f "$LEGACY_BIN" ]; then
+    if grep -qF ".ollama-watch-tool/scripts/watch-ollama" "$LEGACY_BIN" 2>/dev/null ||
+       grep -qF "/var/log/ollama_readable.log" "$LEGACY_BIN" 2>/dev/null; then
+        rm -f "$LEGACY_BIN"
+        change "Removed legacy executable: $LEGACY_BIN"
+    else
+        warn "Legacy path exists but is not a watch-ollama file: $LEGACY_BIN — skipping"
+    fi
 fi
 
 # ── Remove systemd service ─────────────────────────────────────────────────────

@@ -8,7 +8,6 @@ set -e
 PROJECT_ROOT="$(dirname "$(readlink -f "$0")")"
 VERSION=$(cat "$PROJECT_ROOT/VERSION")
 INSTALL_DIR="$HOME/.ollama-watch-tool/scripts"
-LEGACY_BIN="$HOME/.local/bin/watch-ollama"
 SYSTEMD_DIR="/etc/systemd/system"
 SERVICE_FILE="ollama-watcher.service"
 LOG_DIR="$HOME/.ollama-watch-tool"
@@ -146,15 +145,6 @@ for script in "$PROJECT_ROOT/scripts/"*; do
         change "chmod +x: $INSTALL_DIR/$filename"
     fi
 done
-
-# Keep old PATH-based installs from shadowing the current alias target.
-mkdir -p "$(dirname "$LEGACY_BIN")"
-cat > "$LEGACY_BIN" <<EOF
-#!/bin/sh
-exec "\$HOME/.ollama-watch-tool/scripts/watch-ollama" "\$@"
-EOF
-chmod +x "$LEGACY_BIN"
-change "Wrote compatibility wrapper: $LEGACY_BIN"
 
 # ── Copy uninstall.sh ──────────────────────────────────────────────────────────
 cp "$PROJECT_ROOT/uninstall.sh" "$INSTALL_DIR/uninstall.sh"
