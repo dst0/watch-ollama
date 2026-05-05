@@ -119,7 +119,9 @@ def main():
                     needs_assistant_marker = not prompt_ends_with_assistant_marker(formatted_prompt)
 
                     with open(READABLE_LOG, "a") as out:
-                        out.write(f"\n\n==================== {timestamp} [GENERATION STARTED] ====================\n")
+                        out.write(
+                            f"\n\n==================== {timestamp} [NEW PROMPT - GENERATION STARTED] ====================\n\n"
+                        )
                         out.write(formatted_prompt + "\n")
                         if needs_assistant_marker:
                             out.write("### ASSISTANT\n")

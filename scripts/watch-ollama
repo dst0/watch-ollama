@@ -418,7 +418,7 @@ def main(stdscr):
     t_smi.start()
 
     startup_started = time.time()
-    startup_minimum = startup_started + 3.0
+    startup_minimum = startup_started + 2.0
     while time.time() < startup_minimum or not (log_ready.is_set() and smi_ready.is_set()):
         max_y, max_x = stdscr.getmaxyx()
         stdscr.erase()
