@@ -879,7 +879,7 @@ def main(stdscr):
                             if not safe_addstr(" | "): break
                         
                         if part.startswith("CPU:"):
-                            if not safe_addstr("CPU:", curses.A_BOLD): break
+                            if not safe_addstr("CPU", curses.A_BOLD): break
                             sub = part[4:].strip().split()
                             if not sub: continue
                             # Load %
