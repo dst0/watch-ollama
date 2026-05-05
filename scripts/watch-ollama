@@ -151,6 +151,12 @@ def get_system_temps():
                     for k, v in readings.items():
                         if k.endswith("_input") and "temp" in k:
                             temp_val = float(v)
+                            adapter_upper = adapter.upper()
+                            
+                            # Filter out noisy memory sensors
+                            if "SPD" in adapter_upper:
+                                continue
+
                             short_adapter = adapter.split('-')[0].upper()
                             # Mapping: original -> short
                             replacements = {
@@ -168,12 +174,14 @@ def get_system_temps():
                             if short_adapter in ["CPU", "K10"]:
                                 continue
 
-                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "S").replace("Composite", "C").upper()
-                            # Strip common sensor numbers if just one
-                            if short_sensor == "1": short_sensor = ""
+                            # Simplify sensor: only keep numeric suffix if present
+                            # e.g., 'temp1_input' -> '1', 'temp_input' -> ''
+                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "").replace("Composite", "").upper()
+                            # Use only numeric parts to keep it minimal
+                            numeric_part = "".join([c for c in short_sensor if c.isdigit()])
 
-                            if short_sensor:
-                                temps.append(f"{short_adapter}_{short_sensor}:{temp_val:.0f}°C")
+                            if numeric_part:
+                                temps.append(f"{short_adapter}_{numeric_part}:{temp_val:.0f}°C")
                             else:
                                 temps.append(f"{short_adapter}:{temp_val:.0f}°C")
                             
