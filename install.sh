@@ -80,6 +80,14 @@ prompt_yes_no() {
     local reply
     local prompt_text="${COLOR_WARN}? ${prompt} [Y/n] ${COLOR_RESET}"
 
+    # Try reading from stdin first (to support 'yes | script.sh')
+    if [ ! -t 0 ]; then
+        IFS= read -r reply
+        [[ -z "$reply" || $reply == [yY] ]]
+        return
+    fi
+
+    # Fallback to /dev/tty if stdin is a terminal
     if [ -r /dev/tty ] && [ -w /dev/tty ]; then
         printf "%b" "$prompt_text"
         IFS= read -t 10 -r -n 1 reply < /dev/tty || reply=""
