@@ -152,10 +152,22 @@ def get_system_temps():
                         if k.endswith("_input") and "temp" in k:
                             temp_val = float(v)
                             short_adapter = adapter.split('-')[0].upper()
-                            replacements = {"AMDGPU": "GPU", "K10TEMP": "K10", "CORETEMP": "CPU", "NVME": "SSD"}
+                            # Mapping: original -> short
+                            replacements = {
+                                "AMDGPU": "GPU",
+                                "K10TEMP": "K10",
+                                "CORETEMP": "CPU",
+                                "NVME": "SSD",
+                                "ACPI": "SYS",
+                                "R8169": "NET"
+                            }
                             for old, new in replacements.items():
                                 short_adapter = short_adapter.replace(old, new)
                             
+                            # Hide K10/CPU if we are already showing main CPU stats elsewhere
+                            if short_adapter in ["CPU", "K10"]:
+                                continue
+
                             short_sensor = sensor_name.replace("temp", "").replace("Sensor", "S").replace("Composite", "C").upper()
                             # Strip common sensor numbers if just one
                             if short_sensor == "1": short_sensor = ""
@@ -164,7 +176,9 @@ def get_system_temps():
                                 temps.append(f"{short_adapter}_{short_sensor}:{temp_val:.0f}°C")
                             else:
                                 temps.append(f"{short_adapter}:{temp_val:.0f}°C")
-                            if "k10temp" in adapter or "coretemp" in adapter or "cpu" in adapter.lower():
+                            
+                            # Keep internal cpu_temp update logic for fallback
+                            if "K10" in short_adapter or "CPU" in short_adapter:
                                 cpu_temp = max(cpu_temp, temp_val)
     except Exception:
         pass
@@ -862,7 +876,7 @@ def main(stdscr):
                             stdscr.addstr(i, curr_x, " " + r_val_str, get_val_color(u_pct, 60, 90))
                             curr_x += len(r_val_str) + 1
                         else:
-                            # System temps: "adapter:58°C"
+                            # System temps: "adapter_s:58°C"
                             s_parts = part.split()
                             for s_idx, s_p in enumerate(s_parts):
                                 if s_idx > 0:
