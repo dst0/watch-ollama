@@ -438,13 +438,16 @@ def set_error(key, message):
         else:
             error_messages.pop(key, None)
 
-def get_temp_color(temp, color_pair_func=curses.color_pair):
-    if temp < 50:
-        return color_pair_func(1) # Cyan/Cold
-    elif temp < 75:
-        return color_pair_func(3) # Yellow/Warm
+def get_val_color(val, threshold1, threshold2, color_pair_func=curses.color_pair):
+    if val < threshold1:
+        return color_pair_func(2) # Green
+    elif val < threshold2:
+        return color_pair_func(3) # Yellow
     else:
-        return color_pair_func(11) # Red/Hot (need to init this)
+        return color_pair_func(11) # Red
+
+def get_temp_color(temp, color_pair_func=curses.color_pair):
+    return get_val_color(temp, 50, 75, color_pair_func)
 
 def toggle_gpu_tool():
     current = SETTINGS["gpu_tool"]
@@ -533,9 +536,14 @@ def poll_smi():
         full_smi_lines.append("")
         
         if SETTINGS["show_cpu"]:
-            cpu_line = f"CPU: {cpu_load:4.1f}% {cpu_temp:4.1f}°C"
+            cpu_pct = f"{cpu_load:4.1f}%"
+            temp_str = f"{cpu_temp:4.1f}°C"
+            cpu_line = f"C:{cpu_pct} {temp_str}"
+            
             if ram_total > 0:
-                cpu_line += f" | RAM: {ram_avail:.1f}G/{ram_total:.1f}G"
+                ram_pct = (ram_used / ram_total) * 100
+                cpu_line += f" | R:{ram_avail:.1f}G/{ram_total:.1f}G"
+            
             if sys_temps:
                 cpu_line += " | " + " ".join(sys_temps)
             full_smi_lines.append(cpu_line)
@@ -810,17 +818,43 @@ def main(stdscr):
         stdscr.erase()
         
         # Render SMI
-        temp_color = get_temp_color(cpu_temp)
         for i in range(smi_lines):
             line = smi_snapshot[i] if i < len(smi_snapshot) else ""
             try:
-                if "Temp:" in line:
-                    # Special color for the CPU/GPU temperature lines if detected
-                    stdscr.addstr(i, 0, line[:max_x-1], temp_color)
+                # Apply coloring for telemetry line
+                if "C:" in line and "R:" in line:
+                    # Parse line: "C: 4.1% 43.1°C | R: 15.2G/32.0G ..."
+                    parts = line.split("|")
+                    
+                    stdscr.addstr(i, 0, "C:", curses.A_BOLD)
+                    
+                    # C part
+                    c_parts = parts[0].replace("C:", "").split()
+                    # pct
+                    pct = float(c_parts[0].replace("%", ""))
+                    stdscr.addstr(i, 2, c_parts[0], get_val_color(pct, 50, 80))
+                    # temp
+                    stdscr.addstr(i, 2+len(c_parts[0])+1, c_parts[1], get_temp_color(float(c_parts[1].replace("°C", ""))))
+                    
+                    # R part
+                    stdscr.addstr(i, 2+len(c_parts[0])+1+len(c_parts[1])+1, " | R:", curses.A_BOLD)
+                    r_str = parts[1].replace("R:", "").strip()
+                    # ram used pct
+                    ram_vals = r_str.split('/')[0].replace("G", ""), r_str.split('/')[1].replace("G", "")
+                    ram_pct = (float(ram_vals[0]) / float(ram_vals[1])) * 100
+                    stdscr.addstr(i, 2+len(c_parts[0])+1+len(c_parts[1])+1+5, r_str, get_val_color(ram_pct, 60, 90))
+                    
+                    # Rest of line (sys temps)
+                    if len(parts) > 2:
+                        stdscr.addstr(i, 2+len(c_parts[0])+1+len(c_parts[1])+1+5+len(r_str)+1, " | " + "|".join(parts[2:]))
                 else:
                     stdscr.addstr(i, 0, line[:max_x-1])
-            except curses.error:
-                pass
+            except (curses.error, ValueError, IndexError):
+                # Fallback to standard line render if parsing fails
+                try:
+                    stdscr.addstr(i, 0, line[:max_x-1])
+                except curses.error:
+                    pass
             
         if smi_lines < max_y:
             try:
