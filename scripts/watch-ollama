@@ -840,9 +840,14 @@ def main(stdscr):
         # model/prompt rows. Reset the reservation only when the terminal height changes.
         max_smi_lines = max(1, max_y // 2)
         observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
-        reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
-        smi_lines = min(max_smi_lines, max(reserved_smi_lines, observed_smi_lines))
-        reserved_smi_lines_by_height[max_y] = smi_lines
+        
+        # If panels are hidden, we don't want to reserve space for them
+        if not SETTINGS["show_cpu"] and not SETTINGS["show_gpu"]:
+            smi_lines = observed_smi_lines
+        else:
+            reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
+            smi_lines = min(max_smi_lines, max(reserved_smi_lines, observed_smi_lines))
+            reserved_smi_lines_by_height[max_y] = smi_lines
             
         render_width = max(1, max_x - 1)
         active_errors = get_error_lines(render_width)
