@@ -18,6 +18,42 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
   - `setup-ollama`: Interactive configuration helper for setting ports/hosts.
   - `make-modelfile`: Interactive generator for Ollama Modelfiles.
 
+## Visual Preview
+
+`watch-ollama` provides a rich, color-coded terminal interface for monitoring your local LLM stack:
+
+```text
+=== OLLAMA  parallel:1  tool:amd-smi ===
+  qwen3.6-35b (22.4 GB | 100% GPU / 0% CPU)
+    └ ctx:32768 | 35B | IQ3_S
+
+CPU: 14% 48°C | RAM: 12/64G | GPU: 54°C | SSD: 38°C
+
+--------------------------------------------------------------------------------
+14:20:05 [NEW PROMPT - GENERATION STARTED]
+### USER
+Explain the transformer architecture in one sentence.
+
+### ASSISTANT
+The transformer is a neural network architecture that relies on self-attention 
+mechanisms to process entire sequences of data in parallel, capturing long-range 
+dependencies without using recurrent connections.
+
+[GENERATION FINISHED] [LATENCY: 850ms] [GEN: 45 tokens | 52.9 t/s] [PP: 12 tokens | 180.2 pp/s]
+--------------------------------------------------------------------------------
+[UP/DOWN] Scroll | [F] Follow:ON | [G] GPU:ON | [C] CPU:ON | [L] Log:ON | [Q] Quit
+```
+
+## Screenshots & Video
+
+### Screenshot
+![Watch Ollama TUI Screenshot](https://via.placeholder.com/800x450?text=Watch+Ollama+TUI+Screenshot)
+*Replace this with a real screenshot of the tool in action.*
+
+### Video Demo
+[![Watch Ollama Video Demo](https://via.placeholder.com/800x450?text=Watch+Ollama+Video+Demo)](https://example.com/video-demo)
+*Replace this with a link to a video demo or GIF.*
+
 ## Repository Structure
 - **`scripts/`**: All executable tools and utility scripts.
 - **`systemd/`**: Systemd unit files for background services.
