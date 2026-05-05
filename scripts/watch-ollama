@@ -99,6 +99,28 @@ def get_cpu_usage():
     except Exception:
         return 0.0
 
+def get_ram_usage():
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            lines = f.readlines()
+        mem_info = {}
+        for line in lines:
+            parts = line.split(':')
+            if len(parts) == 2:
+                mem_info[parts[0].strip()] = int(parts[1].strip().split()[0])
+        
+        total = mem_info.get('MemTotal', 0)
+        available = mem_info.get('MemAvailable', mem_info.get('MemFree', 0))
+        
+        if total > 0:
+            total_gb = total / (1024 * 1024)
+            available_gb = available / (1024 * 1024)
+            used_gb = total_gb - available_gb
+            return total_gb, available_gb, used_gb
+    except Exception:
+        pass
+    return 0.0, 0.0, 0.0
+
 def get_cpu_temp():
     try:
         paths = [
@@ -458,6 +480,7 @@ def poll_smi():
         # CPU load and temp
         cpu_load = get_cpu_usage()
         cpu_temp, sys_temps = get_system_temps()
+        ram_total, ram_avail, ram_used = get_ram_usage()
         
         # Parallel sessions allowed
         num_parallel = get_ollama_num_parallel()
@@ -507,6 +530,8 @@ def poll_smi():
         
         if SETTINGS["show_cpu"]:
             cpu_line = f"CPU Load: {cpu_load:4.1f}% | Temp: {cpu_temp:4.1f}°C"
+            if ram_total > 0:
+                cpu_line += f" | RAM: {ram_avail:.1f}G free / {ram_total:.1f}G"
             if sys_temps:
                 cpu_line += " | Sys: " + " ".join(sys_temps)
             full_smi_lines.append(cpu_line)
