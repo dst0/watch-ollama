@@ -137,6 +137,34 @@ def get_cpu_temp():
         pass
     return 0.0
 
+def get_gpu_temp():
+    tool = detect_gpu_tool()
+    if tool == "nvidia-smi":
+        try:
+            output = subprocess.check_output(["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"], text=True).strip()
+            return float(output)
+        except Exception:
+            pass
+    elif tool == "amd-smi":
+        try:
+            # amd-smi sensor --temperature often returns multiple lines or JSON
+            output = subprocess.check_output(["amd-smi", "sensor", "--temperature"], text=True)
+            # Find the highest temperature in the output
+            temps = re.findall(r'(\d+)\s*°C', output)
+            if temps:
+                return max(float(t) for t in temps)
+        except Exception:
+            pass
+    elif tool == "rocm-smi":
+        try:
+            output = subprocess.check_output(["rocm-smi", "--showtemp"], text=True)
+            temps = re.findall(r'(\d+(?:\.\d+)?)\s*°C', output)
+            if temps:
+                return max(float(t) for t in temps)
+        except Exception:
+            pass
+    return 0.0
+
 def get_system_temps():
     temps = []
     # This will be used as the overall system 'cpu_temp' for indicators
@@ -511,7 +539,13 @@ def poll_smi():
 
         # CPU load and temp
         cpu_load = get_cpu_usage()
-        cpu_temp, sys_temps = get_system_temps()
+        sys_max_temp, sys_temps = get_system_temps()
+        gpu_max_temp = get_gpu_temp()
+        
+        # The 'cpu_temp' variable is used for the overall status bar/title indicators
+        # We take the max of all detected sensors (CPU and GPU)
+        total_max_temp = max(sys_max_temp, gpu_max_temp)
+        
         ram_total, ram_avail, ram_used = get_ram_usage()
         
         # Parallel sessions allowed
@@ -562,7 +596,8 @@ def poll_smi():
         
         if SETTINGS["show_cpu"]:
             cpu_pct = f"{cpu_load:2.0f}%"
-            temp_str = f"{cpu_temp:2.0f}°C"
+            # We show the hottest system sensor as the primary temp in the telemetry line
+            temp_str = f"{total_max_temp:2.0f}°C"
             cpu_line = f"CPU:{cpu_pct} {temp_str}"
             
             if ram_total > 0:
@@ -576,7 +611,7 @@ def poll_smi():
         if SETTINGS["show_gpu"]:
             full_smi_lines.extend(hw_lines)
             
-        set_smi_text(full_smi_lines, cpu_temp=cpu_temp)
+        set_smi_text(full_smi_lines, cpu_temp=total_max_temp)
         time.sleep(0.5)
 
 def get_error_lines(width):
