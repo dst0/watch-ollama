@@ -110,21 +110,25 @@ def main():
                     timestamp = time.strftime("%H:%M:%S")
                     
                     # Look for prompt token count if available in the same line or next
-                    ids_match = re.search(r'ids=\[(.*?)\]', line)
+                    ids_match = re.search(r'ids="?\[(.*?)"?\]', line)
                     if ids_match:
                         prompt_eval_count = len(ids_match.group(1).split())
                     else:
                         prompt_eval_count = 0
-                        
+                    
+                    # Distinguish automated follow-up suggestion requests from Open WebUI
+                    if "Suggest 3-5 relevant follow-up questions" in formatted_prompt:
+                        header = f"\n\n==================== {timestamp} [FOLLOW-UP SUGGESTIONS] ====================\n\n"
+                    else:
+                        header = f"\n\n==================== {timestamp} [NEW PROMPT - GENERATION STARTED] ====================\n\n"
+
                     prompt_start_time = time.time()
                     eval_count = 0
                     in_generation = True
                     needs_assistant_marker = not prompt_ends_with_assistant_marker(formatted_prompt)
 
                     with open(READABLE_LOG, "a") as out:
-                        out.write(
-                            f"\n\n==================== {timestamp} [NEW PROMPT - GENERATION STARTED] ====================\n\n"
-                        )
+                        out.write(header)
                         out.write(formatted_prompt + "\n")
                         if needs_assistant_marker:
                             out.write("### ASSISTANT\n")
@@ -163,9 +167,21 @@ def main():
                         out.write(token)
                         out.flush()
             
+            # --- STOPPED / ERROR ---
+            if in_generation and ('msg="llama runner terminated"' in line or 'msg="context cancelled"' in line or 'msg="context for request finished"' in line):
+                in_generation = False
+                timestamp = time.strftime("%H:%M:%S")
+                with open(READABLE_LOG, "a") as out:
+                    out.write(f"\n\n[GENERATION STOPPED] {timestamp} - {line.strip()}\n")
+                    out.write(f"{'-'*80}\n")
+                    out.flush()
+
             # --- FINISHED / API METRICS ---
             if in_generation and '[GIN]' in line and 'POST' in line and any(x in line for x in ['/api/generate', '/api/chat', '/v1/chat/completions']):
                 in_generation = False
+                # Add a brief cooldown to prevent immediate triggers from rapid requests
+                time.sleep(0.2)
+                
                 latency = "N/A"
                 latency_match = re.search(r'\|\s*([0-9ms.µsh]+)\s*\|', line)
                 if latency_match:
@@ -174,7 +190,7 @@ def main():
                 status_match = re.search(r'\|\s*(\d{3})\s*\|', line)
                 status = status_match.group(1) if status_match else "???"
 
-                if status == "200":
+                if status.startswith('2'):
                     # Calculate manual metrics if we have the token counts
                     stats_str = f"[LATENCY: {latency}]"
                     
@@ -190,6 +206,12 @@ def main():
 
                     with open(READABLE_LOG, "a") as out:
                         out.write(f"\n\n[GENERATION FINISHED] {stats_str}\n")
+                        out.write(f"{'-'*80}\n")
+                        out.flush()
+                else:
+                    # Log non-2xx status as a stop
+                    with open(READABLE_LOG, "a") as out:
+                        out.write(f"\n\n[GENERATION STOPPED] {timestamp} - Status: {status}\n")
                         out.write(f"{'-'*80}\n")
                         out.flush()
 

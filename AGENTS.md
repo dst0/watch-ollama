@@ -28,6 +28,10 @@ switch-gpu [vulkan|rocm|status]
 
 Common installed commands for running the TUI, configuring the Ollama host, and switching GPU backends.
 
+## Workflow Guidelines
+
+- **Command Transparency:** Always explain the reason and intent behind a shell command before executing it.
+
 ## Completion Workflow
 
 Unless the user explicitly asks for a different flow, finish code changes by running the full test suite, reinstalling with `./install.sh`, committing the scoped change, and pushing it to the current branch. Report any installer prompts, service restarts, or verification failures in the final response.
