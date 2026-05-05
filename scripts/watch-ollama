@@ -468,7 +468,7 @@ def set_error(key, message):
 
 def get_val_color(val, t1, t2, t3, t4, color_pair_func=curses.color_pair):
     if val < t1:
-        return color_pair_func(1)  # Blue (Cold)
+        return color_pair_func(5)  # Blue (Cold)
     elif val < t2:
         return color_pair_func(2)  # Green (Optimal)
     elif val < t3:
@@ -784,6 +784,7 @@ def main(stdscr):
     curses.init_pair(3, curses.COLOR_YELLOW, -1)   # WARNING/WARN
     curses.init_pair(4, curses.COLOR_MAGENTA, -1)  # THOUGHT block
     curses.init_pair(11, curses.COLOR_RED, -1)     # DANGER/HOT
+    curses.init_pair(5, curses.COLOR_BLUE, -1)      # COLD
     
     # Orange (if supported by terminal)
     if curses.COLORS >= 256:
@@ -918,7 +919,6 @@ def main(stdscr):
                                     if not safe_addstr(name + ":", curses.A_BOLD): break
                                     t_val = float(t_val_str.replace("°C", ""))
                                     t_color = get_temp_color(t_val)
-                                    if not safe_addstr(" 🌡 ", curses.A_REVERSE | t_color): break
                                     if not safe_addstr(t_val_str, t_color): break
                                 else:
                                     if not safe_addstr(s_p): break
@@ -1005,7 +1005,7 @@ def main(stdscr):
             log_active = (time.time() - last_log_update < 2.0)
             log_text = " output" if log_active else " idle"
             import sys
-            sys.stdout.write(f"\033]0;👀 Watch Ollama [🌡️:{t_mark}]{e_part}{log_text}\007")
+            sys.stdout.write(f"\033]0;👀 Watch Ollama {t_mark}{e_part}{log_text}\007")
             sys.stdout.flush()
 
         stdscr.refresh()
