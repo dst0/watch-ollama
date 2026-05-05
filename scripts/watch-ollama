@@ -34,6 +34,7 @@ OLLAMA_API_URL = _read_ollama_url()
 log_lines = deque(maxlen=5000)
 smi_text = ["Loading GPU status..."]
 error_messages = {}
+log_lock = threading.Lock()
 error_lock = threading.Lock()
 _tail_proc = None  # module-level reference so we can terminate on exit
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
@@ -60,11 +61,13 @@ def wrap_render_line(line, width):
     return [line[i:i + width] for i in range(0, len(line), width)]
 
 def build_visible_log_lines(width):
+    with log_lock:
+        log_snapshot = list(log_lines)
     visible = []
-    for idx, line in enumerate(log_lines):
+    for idx, line in enumerate(log_snapshot):
         for segment in wrap_render_line(line, width):
             visible.append((idx, segment))
-    return visible
+    return visible, log_snapshot
 
 def set_error(key, message):
     with error_lock:
@@ -110,24 +113,25 @@ def tail_log():
                     text = ""
                 
                 parts = text.split('\n')
-                if len(parts) == 1:
-                    current_line += parts[0]
-                    if log_lines:
-                        log_lines[-1] = current_line.replace('\t', '    ')
+                with log_lock:
+                    if len(parts) == 1:
+                        current_line += parts[0]
+                        if log_lines:
+                            log_lines[-1] = current_line.replace('\t', '    ')
+                        else:
+                            log_lines.append(current_line.replace('\t', '    '))
                     else:
+                        current_line += parts[0]
+                        if log_lines:
+                            log_lines[-1] = current_line.replace('\t', '    ')
+                        else:
+                            log_lines.append(current_line.replace('\t', '    '))
+
+                        for part in parts[1:-1]:
+                            log_lines.append(part.replace('\t', '    '))
+
+                        current_line = parts[-1]
                         log_lines.append(current_line.replace('\t', '    '))
-                else:
-                    current_line += parts[0]
-                    if log_lines:
-                        log_lines[-1] = current_line.replace('\t', '    ')
-                    else:
-                        log_lines.append(current_line.replace('\t', '    '))
-                    
-                    for part in parts[1:-1]:
-                        log_lines.append(part.replace('\t', '    '))
-                    
-                    current_line = parts[-1]
-                    log_lines.append(current_line.replace('\t', '    '))
             else:
                 if p.poll() is not None:
                     error = ""
@@ -336,7 +340,7 @@ def main(stdscr):
         if log_h < 1:
             log_h = 1 # Prevent crash on tiny terminal
 
-        visible_log_lines = build_visible_log_lines(render_width)
+        visible_log_lines, log_snapshot = build_visible_log_lines(render_width)
 
         # Handle input
         key = stdscr.getch()
@@ -393,7 +397,7 @@ def main(stdscr):
                 is_thought = False
                 
                 for j in range(source_idx, max(-1, source_idx - 500), -1):
-                    check_line = sanitize_render_text(log_lines[j])
+                    check_line = sanitize_render_text(log_snapshot[j])
                     if check_line.startswith("### USER") or check_line.startswith("USER:"):
                         block_color = curses.color_pair(1)
                         break
@@ -405,7 +409,7 @@ def main(stdscr):
                 
                 # Check if we're inside a THOUGHT block
                 for j in range(source_idx, max(-1, source_idx - 500), -1):
-                    check_line = sanitize_render_text(log_lines[j])
+                    check_line = sanitize_render_text(log_snapshot[j])
                     if "<think>" in check_line or "[THOUGHT]" in check_line:
                         is_thought = True
                         if "</think>" in check_line or "[/THOUGHT]" in check_line:
