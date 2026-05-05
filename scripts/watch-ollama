@@ -51,6 +51,7 @@ ROLE_MARKERS = {
 ANSI_TOKEN_RE = re.compile(r"(?:\x1b|\\033)\[([0-9;]*)m")
 ansi_color_pairs = {}
 next_ansi_color_pair = 10
+SCROLL_LINE_STEP = 3
 
 def sanitize_render_text(text):
     text = ANSI_ESCAPE_RE.sub("", text)
@@ -153,6 +154,49 @@ def build_visible_log_lines(width):
         for segment in wrap_render_line(line, width):
             visible.append((idx, segment))
     return visible, log_snapshot
+
+def collect_input(stdscr):
+    keys = []
+    while True:
+        key = stdscr.getch()
+        if key == -1:
+            return keys
+        keys.append(key)
+
+def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
+    if not keys:
+        return scroll_pos, auto_scroll, False
+
+    max_scroll = max(0, log_line_count - log_h)
+    changed = False
+
+    for key in keys:
+        if key == curses.KEY_UP:
+            scroll_pos -= SCROLL_LINE_STEP
+            auto_scroll = False
+            changed = True
+        elif key == curses.KEY_DOWN:
+            scroll_pos += SCROLL_LINE_STEP
+            auto_scroll = scroll_pos >= max_scroll
+            changed = True
+        elif key == curses.KEY_PPAGE:
+            scroll_pos -= log_h
+            auto_scroll = False
+            changed = True
+        elif key == curses.KEY_NPAGE:
+            scroll_pos += log_h
+            auto_scroll = scroll_pos >= max_scroll
+            changed = True
+        elif key == ord('f') or key == ord('F'):
+            auto_scroll = True
+            changed = True
+
+    if auto_scroll:
+        scroll_pos = max_scroll
+    else:
+        scroll_pos = min(max(0, scroll_pos), max_scroll)
+
+    return scroll_pos, auto_scroll, changed
 
 def set_error(key, message):
     with error_lock:
@@ -400,7 +444,7 @@ def main(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(1)
     stdscr.keypad(True)
-    stdscr.timeout(50)
+    stdscr.timeout(16)
     
     # Setup Colors
     curses.start_color()
@@ -464,28 +508,14 @@ def main(stdscr):
 
         visible_log_lines, log_snapshot = build_visible_log_lines(render_width)
 
-        # Handle input
-        key = stdscr.getch()
-        
-        if key != -1:
-            if key == 3 or key == ord('q') or key == ord('Q') or key == 27: # Ctrl+C, q, Q, ESC
-                break
-            elif key == curses.KEY_UP:
-                scroll_pos = max(0, scroll_pos - 1)
-                auto_scroll = False
-            elif key == curses.KEY_DOWN:
-                scroll_pos += 1
-                if scroll_pos >= max(0, len(visible_log_lines) - log_h):
-                    auto_scroll = True
-            elif key == curses.KEY_PPAGE:
-                scroll_pos = max(0, scroll_pos - log_h)
-                auto_scroll = False
-            elif key == curses.KEY_NPAGE:
-                scroll_pos += log_h
-                if scroll_pos >= max(0, len(visible_log_lines) - log_h):
-                    auto_scroll = True
-            elif key == ord('f') or key == ord('F'):
-                auto_scroll = True
+        # Drain all queued keys each frame so held scroll keys do not create a
+        # backlog that blocks a direction change.
+        keys = collect_input(stdscr)
+        if any(key == 3 or key == ord('q') or key == ord('Q') or key == 27 for key in keys):
+            break
+        scroll_pos, auto_scroll, input_changed = apply_input(
+            keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
+        )
             
         stdscr.erase()
         
@@ -582,7 +612,8 @@ def main(stdscr):
                 pass
         
         stdscr.refresh()
-        time.sleep(0.05)
+        if not input_changed:
+            time.sleep(0.02)
 
 if __name__ == "__main__":
     try:

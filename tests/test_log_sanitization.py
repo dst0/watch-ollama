@@ -1,5 +1,6 @@
 import importlib.machinery
 import pathlib
+import curses
 import unittest
 
 
@@ -92,6 +93,34 @@ class LogSanitizationTests(unittest.TestCase):
         self.assertEqual(TUI.role_color_pair_for_line("### SYSTEM"), 2)
         self.assertIsNone(TUI.role_color_pair_for_line("USER: quoted chat history"))
         self.assertIsNone(TUI.role_color_pair_for_line("ASSISTANT: quoted chat history"))
+
+    def test_tui_collects_all_pending_input(self):
+        class FakeScreen:
+            def __init__(self, keys):
+                self.keys = list(keys)
+
+            def getch(self):
+                if self.keys:
+                    return self.keys.pop(0)
+                return -1
+
+        self.assertEqual(
+            TUI.collect_input(FakeScreen([curses.KEY_UP, curses.KEY_DOWN])),
+            [curses.KEY_UP, curses.KEY_DOWN],
+        )
+
+    def test_tui_scroll_direction_can_reverse_without_waiting_for_backlog(self):
+        scroll_pos, auto_scroll, changed = TUI.apply_input(
+            [curses.KEY_UP, curses.KEY_UP, curses.KEY_DOWN],
+            scroll_pos=50,
+            auto_scroll=False,
+            log_line_count=100,
+            log_h=10,
+        )
+
+        self.assertTrue(changed)
+        self.assertFalse(auto_scroll)
+        self.assertEqual(scroll_pos, 47)
 
 
 if __name__ == "__main__":
