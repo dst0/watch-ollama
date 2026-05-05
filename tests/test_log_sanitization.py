@@ -76,6 +76,13 @@ class LogSanitizationTests(unittest.TestCase):
         finally:
             TUI.error_messages.clear()
 
+    def test_tui_only_normalized_role_markers_drive_colors(self):
+        self.assertEqual(TUI.role_color_pair_for_line("### USER"), 1)
+        self.assertEqual(TUI.role_color_pair_for_line("### ASSISTANT"), 2)
+        self.assertEqual(TUI.role_color_pair_for_line("### SYSTEM"), 2)
+        self.assertIsNone(TUI.role_color_pair_for_line("USER: quoted chat history"))
+        self.assertIsNone(TUI.role_color_pair_for_line("ASSISTANT: quoted chat history"))
+
 
 if __name__ == "__main__":
     unittest.main()

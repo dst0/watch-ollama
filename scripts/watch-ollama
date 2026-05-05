@@ -40,6 +40,11 @@ error_lock = threading.Lock()
 _tail_proc = None  # module-level reference so we can terminate on exit
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+ROLE_MARKERS = {
+    "### USER": 1,
+    "### ASSISTANT": 2,
+    "### SYSTEM": 2,
+}
 
 def sanitize_render_text(text):
     text = ANSI_ESCAPE_RE.sub("", text)
@@ -60,6 +65,15 @@ def wrap_render_line(line, width):
     if not line:
         return [""]
     return [line[i:i + width] for i in range(0, len(line), width)]
+
+def role_color_pair_for_line(line):
+    for marker, color_pair in ROLE_MARKERS.items():
+        if line.startswith(marker):
+            return color_pair
+    return None
+
+def is_role_marker_line(line):
+    return role_color_pair_for_line(line) is not None
 
 def build_visible_log_lines(width):
     with log_lock:
@@ -413,11 +427,9 @@ def main(stdscr):
                 
                 for j in range(source_idx, max(-1, source_idx - 500), -1):
                     check_line = sanitize_render_text(log_snapshot[j])
-                    if check_line.startswith("### USER") or check_line.startswith("USER:"):
-                        block_color = curses.color_pair(1)
-                        break
-                    elif check_line.startswith("### ASSISTANT") or check_line.startswith("ASSISTANT:") or check_line.startswith("### SYSTEM"):
-                        block_color = curses.color_pair(2)
+                    role_color_pair = role_color_pair_for_line(check_line)
+                    if role_color_pair is not None:
+                        block_color = curses.color_pair(role_color_pair)
                         break
                     elif check_line.startswith("====================") or check_line.startswith("--------------------------------------------------------------------------------"):
                         break # Reset to default if we cross a separator
@@ -442,7 +454,7 @@ def main(stdscr):
                 color = curses.color_pair(4) if is_thought else block_color
                 
                 # Override color for specific marker lines
-                if line.startswith("### USER") or line.startswith("USER:") or line.startswith("### ASSISTANT") or line.startswith("ASSISTANT:") or line.startswith("### SYSTEM"):
+                if is_role_marker_line(line):
                     color = color | curses.A_BOLD
                 elif line.startswith("====================") or line.startswith("--------------------------------------------------------------------------------"):
                     color = curses.color_pair(3) | curses.A_BOLD

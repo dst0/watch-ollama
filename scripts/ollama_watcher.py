@@ -97,6 +97,9 @@ def main():
             
             # --- START PROMPT ---
             if "msg=encoded string=" in line:
+                if in_generation:
+                    continue
+
                 match = re.search(r'msg=encoded string="(.*)" ids=', line)
                 if match:
                     prompt = decode_go_string(match.group(1))
@@ -116,7 +119,7 @@ def main():
                     needs_assistant_marker = not prompt_ends_with_assistant_marker(formatted_prompt)
 
                     with open(READABLE_LOG, "a") as out:
-                        out.write(f"\n==================== {timestamp} [GENERATION STARTED] ====================\n")
+                        out.write(f"\n\n==================== {timestamp} [GENERATION STARTED] ====================\n")
                         out.write(formatted_prompt + "\n")
                         if needs_assistant_marker:
                             out.write("### ASSISTANT\n")
