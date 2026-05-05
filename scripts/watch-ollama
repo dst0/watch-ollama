@@ -867,7 +867,7 @@ def main(stdscr):
                 if status_pos > len(status_text) + 2:
                     stdscr.addstr(max_y-1, status_pos, " 🌡 ", curses.A_REVERSE | temp_color)
                     if active_errors:
-                        stdscr.addstr(max_y-1, status_pos + 4, " ⚠ ", curses.A_REVERSE | curses.color_pair(11))
+                        stdscr.addstr(max_y-1, status_pos + 4, " ⚠️ ", curses.A_REVERSE | curses.color_pair(11))
                     
                     log_active = (time.time() - last_log_update < 2.0)
                     log_text = "(scrolling)" if log_active else "(waiting)"
