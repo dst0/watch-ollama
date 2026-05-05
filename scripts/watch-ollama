@@ -139,7 +139,7 @@ def get_cpu_temp():
 
 def get_system_temps():
     temps = []
-    cpu_temp = 0.0
+    max_temp = 0.0
     try:
         output = subprocess.check_output(["sensors", "-j"], text=True, errors="replace", stderr=subprocess.DEVNULL)
         import json
@@ -151,7 +151,7 @@ def get_system_temps():
                     for k, v in readings.items():
                         if k.endswith("_input") and "temp" in k:
                             temp_val = float(v)
-                            adapter_upper = adapter.upper()
+                            max_temp = max(max_temp, temp_val)
                             
                             short_adapter = adapter.split('-')[0].upper()
                             # Mapping: original -> short
@@ -166,17 +166,7 @@ def get_system_temps():
                             for old, new in replacements.items():
                                 short_adapter = short_adapter.replace(old, new)
                             
-                            # Identify CPU temperature
-                            if short_adapter in ["CPU", "K10"]:
-                                # Prefer Tdie or Package if available, otherwise fallback to max
-                                if "Tdie" in sensor_name or "Package" in sensor_name:
-                                    cpu_temp = temp_val
-                                elif cpu_temp == 0.0 or "Tctl" not in sensor_name:
-                                    cpu_temp = max(cpu_temp, temp_val)
-                                elif "Tctl" in sensor_name and cpu_temp == 0.0:
-                                    cpu_temp = temp_val
-
-                            # Hide K10/CPU/GPU if we are already showing main stats elsewhere
+                            # Hide primary sensors from the "System temps" list to keep it clean
                             if short_adapter in ["CPU", "K10", "GPU"]:
                                 continue
 
@@ -191,15 +181,10 @@ def get_system_temps():
     except Exception:
         pass
     
-    if not temps:
-        c_temp = get_cpu_temp()
-        if c_temp > 0:
-            cpu_temp = c_temp
-    
-    if cpu_temp == 0.0:
-        cpu_temp = get_cpu_temp()
+    if max_temp == 0.0:
+        max_temp = get_cpu_temp()
         
-    return cpu_temp, temps
+    return max_temp, temps
 
 GPU_TOOLS = ["auto", "nvidia-smi", "amd-smi", "rocm-smi", "none"]
 
@@ -357,6 +342,12 @@ def render_ansi_line(stdscr, y, x, line, max_width):
             elif code == 38 and i + 2 < len(codes) and codes[i + 1] == 5:
                 fg_color = codes[i + 2]
                 i += 2
+            elif 30 <= code <= 37:
+                fg_color = code - 30
+            elif 90 <= code <= 97:
+                fg_color = code - 90 + 8
+            elif code == 39:
+                fg_color = None
             i += 1
 
         pos = match.end()
@@ -512,9 +503,9 @@ def poll_smi():
                 output = subprocess.check_output([tool], text=True, errors="replace")
                 hw_lines = output.splitlines()
             except Exception:
-                hw_lines = [f"({tool} unavailable)"]
+                hw_lines = [f"\033[31m({tool} unavailable)\033[0m"]
         else:
-            hw_lines = ["(no GPU tool detected)"]
+            hw_lines = ["\033[90m(no GPU tool detected)\033[0m"]
 
         # CPU load and temp
         cpu_load = get_cpu_usage()
@@ -552,17 +543,17 @@ def poll_smi():
                         
                         param_details_str = _get_model_params(name)
 
-                        model_lines.append(f"  {name} ({size_str} | {processor or 'unknown'})")
-                        model_lines.append(f"    └ ctx:{ctx}{param_details_str}")
+                        model_lines.append(f"  \033[1;32m{name}\033[0m ({size_str} | {processor or 'unknown'})")
+                        model_lines.append(f"    \033[34m└\033[0m ctx:{ctx}{param_details_str}")
                 else:
-                    model_lines = ["  (no active models)"]
+                    model_lines = ["  \033[90m(no active models)\033[0m"]
                 set_error("ollama", None)
         except Exception:
-            model_lines = ["  (could not reach Ollama API)"]
+            model_lines = ["  \033[31m(could not reach Ollama API)\033[0m"]
             set_error("ollama", "Ollama is not reachable. Run 'ollama serve' to start it.")
 
         full_smi_lines = []
-        header = f"=== OLLAMA  parallel:{num_parallel}  tool:{tool} ==="
+        header = f"\033[1;36m=== OLLAMA  parallel:{num_parallel}  tool:{tool} ===\033[0m"
         full_smi_lines.append(header)
         full_smi_lines.extend(model_lines)
         full_smi_lines.append("")
@@ -863,7 +854,7 @@ def main(stdscr):
         for i in range(smi_lines):
             line = smi_snapshot[i] if i < len(smi_snapshot) else ""
             try:
-                if "CPU:" in line and "RAM:" in line:
+                if "CPU:" in line and ("RAM:" in line or "°C" in line):
                     # Robust parsing for the telemetry oneliner
                     # Format: CPU:4.1% 43.1°C | RAM:15/32G | adapter:58°C ...
                     parts = line.split(" | ")
@@ -891,23 +882,32 @@ def main(stdscr):
                             if not sub: continue
                             # Load %
                             val_str = sub[0]
-                            val = float(val_str.replace("%", ""))
-                            if not safe_addstr(" " + val_str, get_val_color(val, 25, 50, 75, 90)): break
+                            try:
+                                val = float(val_str.replace("%", ""))
+                                if not safe_addstr(" " + val_str, get_val_color(val, 25, 50, 75, 90)): break
+                            except ValueError:
+                                if not safe_addstr(" " + val_str): break
                             # Temp
                             if len(sub) > 1:
                                 temp_str = sub[1]
-                                t_val = float(temp_str.replace("°C", ""))
-                                t_color = get_temp_color(t_val)
-                                if not safe_addstr(" "): break
-                                if not safe_addstr(" 🌡 ", curses.A_REVERSE | t_color): break
-                                if not safe_addstr(" " + temp_str, t_color): break
+                                try:
+                                    t_val = float(temp_str.replace("°C", ""))
+                                    t_color = get_temp_color(t_val)
+                                    if not safe_addstr(" "): break
+                                    if not safe_addstr(" 🌡 ", curses.A_REVERSE | t_color): break
+                                    if not safe_addstr(" " + temp_str, t_color): break
+                                except ValueError:
+                                    if not safe_addstr(" " + temp_str): break
                         elif part.startswith("RAM:"):
                             if not safe_addstr("RAM:", curses.A_BOLD): break
                             r_val_str = part[4:].strip()
                             if "/" in r_val_str:
-                                v1, v2 = r_val_str.split('/')
-                                u_pct = (1.0 - float(v1.replace("G", "")) / float(v2.replace("G", ""))) * 100
-                                if not safe_addstr(" " + r_val_str, get_val_color(u_pct, 25, 50, 75, 90)): break
+                                try:
+                                    v1, v2 = r_val_str.split('/')
+                                    u_pct = (1.0 - float(v1.replace("G", "").replace("M", "")) / float(v2.replace("G", "").replace("M", ""))) * 100
+                                    if not safe_addstr(" " + r_val_str, get_val_color(u_pct, 25, 50, 75, 90)): break
+                                except (ValueError, ZeroDivisionError):
+                                    if not safe_addstr(" " + r_val_str): break
                         else:
                             # System temps
                             s_parts = part.split()
@@ -915,18 +915,21 @@ def main(stdscr):
                                 if s_idx > 0:
                                     if not safe_addstr(" "): break
                                 if ":" in s_p:
-                                    name, t_val_str = s_p.split(":")
-                                    if not safe_addstr(name + ":", curses.A_BOLD): break
-                                    t_val = float(t_val_str.replace("°C", ""))
-                                    t_color = get_temp_color(t_val)
-                                    if not safe_addstr(t_val_str, t_color): break
+                                    try:
+                                        name, t_val_str = s_p.split(":")
+                                        if not safe_addstr(name + ":", curses.A_BOLD): break
+                                        t_val = float(t_val_str.replace("°C", ""))
+                                        t_color = get_temp_color(t_val)
+                                        if not safe_addstr(t_val_str, t_color): break
+                                    except ValueError:
+                                        if not safe_addstr(s_p): break
                                 else:
                                     if not safe_addstr(s_p): break
                 else:
-                    stdscr.addstr(i, 0, line[:max_x-1])
+                    render_ansi_line(stdscr, i, 0, line, max_x - 1)
             except (curses.error, ValueError, IndexError):
                 try:
-                    stdscr.addstr(i, 0, line[:max_x-1])
+                    render_ansi_line(stdscr, i, 0, line, max_x - 1)
                 except curses.error:
                     pass
             
