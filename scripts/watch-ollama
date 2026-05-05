@@ -115,6 +115,38 @@ def get_cpu_temp():
         pass
     return 0.0
 
+def get_system_temps():
+    temps = []
+    cpu_temp = 0.0
+    try:
+        output = subprocess.check_output(["sensors", "-j"], text=True, errors="replace", stderr=subprocess.DEVNULL)
+        import json
+        data = json.loads(output)
+        for adapter, sensors_dict in data.items():
+            if adapter == "Adapter": continue
+            for sensor_name, readings in sensors_dict.items():
+                if isinstance(readings, dict):
+                    for k, v in readings.items():
+                        if k.endswith("_input") and "temp" in k:
+                            temp_val = float(v)
+                            # shorten adapter name if possible
+                            short_adapter = adapter.split('-')[0]
+                            temps.append(f"{short_adapter} {sensor_name}: {temp_val:.1f}°C")
+                            if "k10temp" in adapter or "coretemp" in adapter or "cpu" in adapter.lower():
+                                cpu_temp = max(cpu_temp, temp_val)
+    except Exception:
+        pass
+    
+    if not temps:
+        c_temp = get_cpu_temp()
+        if c_temp > 0:
+            cpu_temp = c_temp
+    
+    if cpu_temp == 0.0:
+        cpu_temp = get_cpu_temp()
+        
+    return cpu_temp, temps
+
 GPU_TOOLS = ["auto", "nvidia-smi", "amd-smi", "rocm-smi", "none"]
 
 def detect_gpu_tool():
@@ -127,7 +159,8 @@ def detect_gpu_tool():
 
 # Fallback to installed location if running from dev and log not found
 
-log_lines = deque(maxlen=5000)
+log_lines = deque(maxlen=100000)
+log_lines_total_count = 0
 smi_text = ["Loading GPU status..."]
 error_messages = {}
 log_lock = threading.Lock()
@@ -136,6 +169,7 @@ error_lock = threading.Lock()
 log_ready = threading.Event()
 smi_ready = threading.Event()
 _tail_proc = None  # module-level reference so we can terminate on exit
+last_log_update = time.time()
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
 LITERAL_ANSI_ESCAPE_RE = re.compile(r"\\033(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\\033\\)|[ -/]*[@-~])")
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -283,11 +317,12 @@ def render_ansi_line(stdscr, y, x, line, max_width):
 def build_visible_log_lines(width):
     with log_lock:
         log_snapshot = list(log_lines)
+        total_count = log_lines_total_count
     visible = []
     for idx, line in enumerate(log_snapshot):
         for segment in wrap_render_line(line, width):
             visible.append((idx, segment))
-    return visible, log_snapshot
+    return visible, log_snapshot, total_count
 
 def collect_input(stdscr):
     keys = []
@@ -298,72 +333,70 @@ def collect_input(stdscr):
         keys.append(key)
 
 def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
-    if not keys:
-        return scroll_pos, auto_scroll, False
-
     max_scroll = max(0, log_line_count - log_h)
     changed = False
 
-    for key in keys:
-        if key == curses.KEY_UP:
-            scroll_pos -= SCROLL_LINE_STEP
-            auto_scroll = False
-            changed = True
-        elif key == curses.KEY_DOWN:
-            scroll_pos += SCROLL_LINE_STEP
-            changed = True
-            if scroll_pos >= max_scroll:
-                scroll_pos = max_scroll
-                auto_scroll = True
-            else:
+    if keys:
+        for key in keys:
+            if key == curses.KEY_UP:
+                scroll_pos -= SCROLL_LINE_STEP
                 auto_scroll = False
-        elif key == curses.KEY_PPAGE:
-            scroll_pos -= log_h
-            auto_scroll = False
-            changed = True
-        elif key == curses.KEY_NPAGE:
-            scroll_pos += log_h
-            changed = True
-            if scroll_pos >= max_scroll:
-                scroll_pos = max_scroll
-                auto_scroll = True
-            else:
-                auto_scroll = False
-        elif key == ord('f') or key == ord('F'):
-            auto_scroll = not auto_scroll
-            changed = True
-        elif key == ord('g') or key == ord('G'):
-            save_setting("show_gpu", not SETTINGS["show_gpu"])
-            changed = True
-        elif key == ord('c') or key == ord('C'):
-            save_setting("show_cpu", not SETTINGS["show_cpu"])
-            changed = True
-        elif key == ord('l') or key == ord('L'):
-            save_setting("show_log", not SETTINGS["show_log"])
-            changed = True
-        elif key == ord('h') or key == ord('H'):
-            save_setting("show_hints", not SETTINGS["show_hints"])
-            changed = True
-        elif key == ord('t') or key == ord('T'):
-            toggle_gpu_tool()
-            changed = True
-        elif key == curses.KEY_MOUSE:
-            try:
-                _, _, _, _, bstate = curses.getmouse()
-                if bstate & 0x10000: # curses.BUTTON4_PRESSED/SCROLL_UP
-                    scroll_pos -= SCROLL_LINE_STEP
+                changed = True
+            elif key == curses.KEY_DOWN:
+                scroll_pos += SCROLL_LINE_STEP
+                changed = True
+                if scroll_pos >= max_scroll:
+                    scroll_pos = max_scroll
+                    auto_scroll = True
+                else:
                     auto_scroll = False
-                    changed = True
-                elif bstate & 0x200000: # curses.BUTTON5_PRESSED/SCROLL_DOWN
-                    scroll_pos += SCROLL_LINE_STEP
-                    changed = True
-                    if scroll_pos >= max_scroll:
-                        scroll_pos = max_scroll
-                        auto_scroll = True
-                    else:
+            elif key == curses.KEY_PPAGE:
+                scroll_pos -= log_h
+                auto_scroll = False
+                changed = True
+            elif key == curses.KEY_NPAGE:
+                scroll_pos += log_h
+                changed = True
+                if scroll_pos >= max_scroll:
+                    scroll_pos = max_scroll
+                    auto_scroll = True
+                else:
+                    auto_scroll = False
+            elif key == ord('f') or key == ord('F'):
+                auto_scroll = not auto_scroll
+                changed = True
+            elif key == ord('g') or key == ord('G'):
+                save_setting("show_gpu", not SETTINGS["show_gpu"])
+                changed = True
+            elif key == ord('c') or key == ord('C'):
+                save_setting("show_cpu", not SETTINGS["show_cpu"])
+                changed = True
+            elif key == ord('l') or key == ord('L'):
+                save_setting("show_log", not SETTINGS["show_log"])
+                changed = True
+            elif key == ord('h') or key == ord('H'):
+                save_setting("show_hints", not SETTINGS["show_hints"])
+                changed = True
+            elif key == ord('t') or key == ord('T'):
+                toggle_gpu_tool()
+                changed = True
+            elif key == curses.KEY_MOUSE:
+                try:
+                    _, _, _, _, bstate = curses.getmouse()
+                    if bstate & 0x10000: # curses.BUTTON4_PRESSED/SCROLL_UP
+                        scroll_pos -= SCROLL_LINE_STEP
                         auto_scroll = False
-            except curses.error:
-                pass
+                        changed = True
+                    elif bstate & 0x200000: # curses.BUTTON5_PRESSED/SCROLL_DOWN
+                        scroll_pos += SCROLL_LINE_STEP
+                        changed = True
+                        if scroll_pos >= max_scroll:
+                            scroll_pos = max_scroll
+                            auto_scroll = True
+                        else:
+                            auto_scroll = False
+                except curses.error:
+                    pass
 
     if auto_scroll:
         scroll_pos = max_scroll
@@ -424,7 +457,7 @@ def poll_smi():
 
         # CPU load and temp
         cpu_load = get_cpu_usage()
-        cpu_temp = get_cpu_temp()
+        cpu_temp, sys_temps = get_system_temps()
         
         # Parallel sessions allowed
         num_parallel = get_ollama_num_parallel()
@@ -474,6 +507,8 @@ def poll_smi():
         
         if SETTINGS["show_cpu"]:
             cpu_line = f"CPU Load: {cpu_load:4.1f}% | Temp: {cpu_temp:4.1f}°C"
+            if sys_temps:
+                cpu_line += " | Sys: " + " ".join(sys_temps)
             full_smi_lines.append(cpu_line)
             full_smi_lines.append("")
             
@@ -492,7 +527,7 @@ def get_error_lines(width):
     return wrap_render_line(text, width)
 
 def tail_log():
-    global _tail_proc
+    global _tail_proc, last_log_update
     import fcntl
     try:
         _tail_proc = subprocess.Popen(
@@ -505,15 +540,16 @@ def tail_log():
         fd = p.stdout.fileno()
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-        
+
         current_line = ""
         while True:
             try:
                 chunk_bytes = p.stdout.read(4096)
             except BlockingIOError:
                 chunk_bytes = None
-            
+
             if chunk_bytes:
+                last_log_update = time.time()
                 set_error("log", None)
                 try:
                     text = chunk_bytes.decode('utf-8', errors='replace')
@@ -522,24 +558,29 @@ def tail_log():
                 
                 parts = text.split('\n')
                 with log_lock:
+                    global log_lines_total_count
                     if len(parts) == 1:
                         current_line += parts[0]
                         if log_lines:
                             log_lines[-1] = current_line.replace('\t', '    ')
                         else:
                             log_lines.append(current_line.replace('\t', '    '))
+                            log_lines_total_count += 1
                     else:
                         current_line += parts[0]
                         if log_lines:
                             log_lines[-1] = current_line.replace('\t', '    ')
                         else:
                             log_lines.append(current_line.replace('\t', '    '))
+                            log_lines_total_count += 1
 
                         for part in parts[1:-1]:
                             log_lines.append(part.replace('\t', '    '))
+                            log_lines_total_count += 1
 
                         current_line = parts[-1]
                         log_lines.append(current_line.replace('\t', '    '))
+                        log_lines_total_count += 1
             else:
                 if p.poll() is not None:
                     error = ""
@@ -726,7 +767,7 @@ def main(stdscr):
         if log_h < 1:
             log_h = 1 # Prevent crash on tiny terminal
 
-        visible_log_lines, log_snapshot = build_visible_log_lines(render_width)
+        visible_log_lines, log_snapshot, total_count = build_visible_log_lines(render_width)
 
         # Drain all queued keys each frame so held scroll keys do not create a
         # backlog that blocks a direction change.
@@ -758,12 +799,6 @@ def main(stdscr):
             except curses.error:
                 pass
         
-        # Determine scroll position
-        if auto_scroll:
-            scroll_pos = max(0, len(visible_log_lines) - log_h)
-        else:
-            scroll_pos = min(scroll_pos, max(0, len(visible_log_lines) - log_h))
-            
         # Render Log
         if SETTINGS["show_log"]:
             for i in range(log_h):
@@ -797,6 +832,15 @@ def main(stdscr):
             status_line = status_text.ljust(max_x-1)
             try:
                 stdscr.addstr(max_y-1, 0, status_line[:max_x-1], curses.A_REVERSE)
+                
+                # Overlay status markers if space permits
+                status_pos = max_x - 15
+                if status_pos > len(status_text) + 2:
+                    stdscr.addstr(max_y-1, status_pos, " T ", curses.A_REVERSE | temp_color)
+                    err_col = curses.color_pair(11) if active_errors else curses.color_pair(2)
+                    stdscr.addstr(max_y-1, status_pos + 4, " E ", curses.A_REVERSE | err_col)
+                    log_col = curses.color_pair(2) if (time.time() - last_log_update < 2.0) else curses.color_pair(3)
+                    stdscr.addstr(max_y-1, status_pos + 8, " L ", curses.A_REVERSE | log_col)
             except curses.error:
                 pass
         
@@ -809,6 +853,9 @@ def main(stdscr):
             time.sleep(0.02)
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.write("\033]0;Watch Ollama\007")
+    sys.stdout.flush()
     try:
         curses.wrapper(main)
     except KeyboardInterrupt:
