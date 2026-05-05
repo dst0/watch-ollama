@@ -134,5 +134,13 @@ This writes an `ollama.conf` file alongside the scripts so that `watch-ollama` a
 - `amd-smi` (for AMD GPU monitoring)
 - `systemd` (required for background watcher)
 
+## Better Together
+
+For full token-per-second metrics in logs (the `prompt_eval_count`, `eval_count`, and timing fields that power the `[GEN: ... t/s]` and `[PP: ... pp/s]` display), use this project alongside the forked Ollama build that emits those fields:
+
+👉 **[dst0/ollama-logs-with-tokens](https://github.com/dst0/ollama-logs-with-tokens)** — Ollama fork that adds token counts and timing to inference log lines.
+
+Without it, `watch-ollama` still works but token-speed lines won't appear in the TUI or reports.
+
 ## Disclaimer
 **THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.**
