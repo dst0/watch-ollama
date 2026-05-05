@@ -47,12 +47,12 @@ dependencies without using recurrent connections.
 ## Screenshots & Video
 
 ### Screenshot
-![Watch Ollama TUI Screenshot](https://via.placeholder.com/800x450?text=Watch+Ollama+TUI+Screenshot)
-*Replace this with a real screenshot of the tool in action.*
+<img width="1440" height="903" alt="Screenshot 2026-05-06 at 9 23 54 AM" src="https://github.com/user-attachments/assets/00ced232-27f3-4b85-9a18-b72964789ddd" />
+
 
 ### Video Demo
-[![Watch Ollama Video Demo](https://via.placeholder.com/800x450?text=Watch+Ollama+Video+Demo)](https://example.com/video-demo)
-*Replace this with a link to a video demo or GIF.*
+https://github.com/user-attachments/assets/92d20147-c692-4d68-bb0a-2fbf9f5f47b2
+
 
 ## Repository Structure
 - **`scripts/`**: All executable tools and utility scripts.
