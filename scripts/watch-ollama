@@ -37,8 +37,11 @@ error_messages = {}
 log_lock = threading.Lock()
 smi_lock = threading.Lock()
 error_lock = threading.Lock()
+log_ready = threading.Event()
+smi_ready = threading.Event()
 _tail_proc = None  # module-level reference so we can terminate on exit
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
+LITERAL_ANSI_ESCAPE_RE = re.compile(r"\\033(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\\033\\)|[ -/]*[@-~])")
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 ROLE_MARKERS = {
     "### USER": 1,
@@ -48,6 +51,7 @@ ROLE_MARKERS = {
 
 def sanitize_render_text(text):
     text = ANSI_ESCAPE_RE.sub("", text)
+    text = LITERAL_ANSI_ESCAPE_RE.sub("", text)
     text = text.replace("\r", "")
     text = text.replace("\t", "    ")
     text = text.replace("<|im_start|>system", "### SYSTEM")
@@ -103,6 +107,7 @@ def set_smi_text(lines):
     global smi_text
     with smi_lock:
         smi_text = lines
+    smi_ready.set()
 
 def get_smi_snapshot():
     with smi_lock:
@@ -118,6 +123,7 @@ def tail_log():
             stderr=subprocess.PIPE,
         )
         p = _tail_proc
+        log_ready.set()
         fd = p.stdout.fileno()
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
@@ -169,6 +175,7 @@ def tail_log():
                 time.sleep(0.05)
     except Exception as e:
         set_error("log", f"Log tail error: {e}")
+        log_ready.set()
 
 def get_ollama_num_parallel():
     """Return OLLAMA_NUM_PARALLEL from the current env or the running ollama process env."""
@@ -318,7 +325,7 @@ def main(stdscr):
     # Load ASCII Header
     try:
         with open(HEADER_FILE, "r") as f:
-            header_lines = f.read().splitlines()
+            header_lines = [sanitize_render_text(line) for line in f.read().splitlines()]
     except FileNotFoundError:
         header_lines = ["WATCH OLLAMA", "Monitoring, Benchmarking, & Management Suite"]
     
@@ -343,6 +350,28 @@ def main(stdscr):
     
     t_smi = threading.Thread(target=poll_smi, daemon=True)
     t_smi.start()
+
+    startup_deadline = time.time() + 2.0
+    while time.time() < startup_deadline and not (log_ready.is_set() and smi_ready.is_set()):
+        max_y, max_x = stdscr.getmaxyx()
+        stdscr.erase()
+
+        start_y = max(0, (max_y - len(header)) // 2)
+        for i, line in enumerate(header):
+            y = start_y + i
+            if y >= max_y:
+                break
+            x = max(0, (max_x - len(line)) // 2)
+            try:
+                stdscr.addstr(y, x, line[:max(1, max_x - x - 1)], curses.color_pair(3) | curses.A_BOLD)
+            except curses.error:
+                pass
+
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key == 3 or key == ord('q') or key == ord('Q') or key == 27:
+            return
+        time.sleep(0.05)
 
     scroll_pos = 0
     auto_scroll = True

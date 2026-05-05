@@ -41,6 +41,11 @@ class LogSanitizationTests(unittest.TestCase):
 
         self.assertEqual(text, "### ASSISTANT    ok")
 
+    def test_tui_sanitizes_literal_ansi_sequences_before_rendering(self):
+        text = TUI.sanitize_render_text("\\033[38;5;51mWATCH\\033[0m")
+
+        self.assertEqual(text, "WATCH")
+
     def test_tui_wraps_long_sanitized_lines(self):
         self.assertEqual(TUI.wrap_render_line("abcdef", 3), ["abc", "def"])
 
