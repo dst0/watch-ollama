@@ -231,7 +231,7 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
             auto_scroll = False # Manual move always pauses follow
             changed = True
         elif key == ord('f') or key == ord('F'):
-            auto_scroll = True
+            auto_scroll = not auto_scroll
             changed = True
         elif key == curses.KEY_MOUSE:
             try:
@@ -627,7 +627,7 @@ def main(stdscr):
 
         # Render Status Bar
         if max_y > 0:
-            status_text = " [LIVE] (Up/Dn/PgUp/PgDn: Scroll | F: Follow | Q/Ctrl+C: Quit) " if auto_scroll else f" [PAUSED] (Line {scroll_pos}/{len(visible_log_lines)}) (Press F to follow) "
+            status_text = " [FOLLOWING] (Up/Dn/PgUp/PgDn: Scroll | F: Stop Follow | Q/Ctrl+C: Quit) " if auto_scroll else f" [PAUSED] (Line {scroll_pos}/{len(visible_log_lines)}) (Press F to follow) "
             status_line = status_text.ljust(max_x-1)
             try:
                 stdscr.addstr(max_y-1, 0, status_line[:max_x-1], curses.A_REVERSE)
