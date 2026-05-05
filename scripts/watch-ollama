@@ -153,10 +153,6 @@ def get_system_temps():
                             temp_val = float(v)
                             adapter_upper = adapter.upper()
                             
-                            # Filter out noisy memory sensors
-                            if "SPD" in adapter_upper:
-                                continue
-
                             short_adapter = adapter.split('-')[0].upper()
                             # Mapping: original -> short
                             replacements = {
