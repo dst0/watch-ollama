@@ -260,6 +260,21 @@ else
     log "systemd not found on this system — skipping service installation."
 fi
 
+# ── Environment check ──────────────────────────────────────────────────────────
+section "5. Environment check"
+if command -v amd-smi >/dev/null 2>&1 || command -v rocm-smi >/dev/null 2>&1; then
+    log "AMD GPU tool detected."
+    if ! groups | grep -qE "\b(render|video)\b"; then
+        warn "You are not in the 'render' or 'video' groups. SMI tools may require elevated permissions for process info."
+        warn "Suggested fix: sudo usermod -a -G render,video $USER"
+        warn "Note: You must restart your session (logout/login) for group changes to take effect."
+    else
+        log "User is in appropriate groups (render/video)."
+    fi
+else
+    log "No AMD GPU tools detected. Skipping group check."
+fi
+
 section "Installation complete"
 printf "%-22s %s\n" "Version:" "v$VERSION"
 printf "%-22s %s\n" "Scripts:" "$INSTALL_DIR"

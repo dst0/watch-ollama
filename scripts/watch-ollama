@@ -502,7 +502,20 @@ def poll_smi():
         hw_lines = []
         if tool != "none":
             try:
-                output = subprocess.check_output([tool], text=True, errors="replace")
+                # Try standard execution first
+                output = subprocess.check_output([tool], text=True, errors="replace", stderr=subprocess.STDOUT)
+                
+                # Check for common permission error message regarding process names (e.g. amd-smi)
+                if "Elevated permissions" in output or "Permission denied" in output:
+                    try:
+                        # Try sudo -n (non-interactive, fails if password required)
+                        sudo_output = subprocess.check_output(["sudo", "-n", tool], text=True, errors="replace", stderr=subprocess.STDOUT)
+                        output = sudo_output
+                    except Exception:
+                        # If sudo failed, add a helpful tip to the output
+                        if "Elevated permissions" in output:
+                            output += "\n\033[93mTip: Run 'sudo usermod -a -G render,video $USER' and restart session to see process names.\033[0m"
+                
                 hw_lines = output.splitlines()
             except Exception:
                 hw_lines = [f"\033[31m({tool} unavailable)\033[0m"]
