@@ -930,7 +930,7 @@ def main(stdscr):
                         stdscr.addstr(max_y-1, status_pos + 3, "⚠️", curses.color_pair(11))
                     
                     log_active = (time.time() - last_log_update < 2.0)
-                    log_text = "scrolling" if log_active else "waiting"
+                    log_text = "output" if log_active else "idle"
                     log_col = curses.color_pair(2) if log_active else curses.color_pair(3)
                     stdscr.addstr(max_y-1, status_pos + 7, f" {log_text} ", curses.A_REVERSE | log_col)
             except curses.error:
@@ -942,7 +942,7 @@ def main(stdscr):
             e_part = " ⚠️" if active_errors else ""
             
             log_active = (time.time() - last_log_update < 2.0)
-            log_text = " scrolling" if log_active else " waiting"
+            log_text = " output" if log_active else " idle"
             import sys
             sys.stdout.write(f"\033]0;👀 Watch Ollama 🌡️{t_mark}{e_part}{log_text}\007")
             sys.stdout.flush()
