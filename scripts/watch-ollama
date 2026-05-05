@@ -882,7 +882,7 @@ def main(stdscr):
             log_active = (time.time() - last_log_update < 2.0)
             log_text = "(scrolling)" if log_active else "(waiting)"
             import sys
-            sys.stdout.write(f"\033]0;Watch Ollama [🌡️ {t_mark}  ⚠️ {e_mark}  {log_text}]\007")
+            sys.stdout.write(f"\033]0;👀 Watch Ollama [🌡️ {t_mark}  ⚠️ {e_mark}  {log_text}]\007")
             sys.stdout.flush()
 
         stdscr.refresh()
@@ -895,7 +895,7 @@ def main(stdscr):
 
 if __name__ == "__main__":
     import sys
-    sys.stdout.write("\033]0;Watch Ollama\007")
+    sys.stdout.write("\033]0;👀 Watch Ollama\007")
     sys.stdout.flush()
     try:
         curses.wrapper(main)
