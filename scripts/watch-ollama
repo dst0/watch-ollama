@@ -152,8 +152,8 @@ def get_system_temps():
                         if k.endswith("_input") and "temp" in k:
                             temp_val = float(v)
                             # shorten adapter name if possible
-                            short_adapter = adapter.split('-')[0]
-                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "S")
+                            short_adapter = adapter.split('-')[0].replace("composite", "cmp").replace("package", "pkg").replace("coretemp", "cpu")
+                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "S").replace("Composite", "C")
                             if short_sensor:
                                 temps.append(f"{short_adapter}_{short_sensor}:{temp_val:.0f}°C")
                             else:
@@ -536,13 +536,12 @@ def poll_smi():
         full_smi_lines.append("")
         
         if SETTINGS["show_cpu"]:
-            cpu_pct = f"{cpu_load:4.1f}%"
-            temp_str = f"{cpu_temp:4.1f}°C"
-            cpu_line = f"C:{cpu_pct} {temp_str}"
+            cpu_pct = f"{cpu_load:2.0f}%"
+            temp_str = f"{cpu_temp:2.0f}°C"
+            cpu_line = f"💻{cpu_pct} {temp_str}"
             
             if ram_total > 0:
-                ram_pct = (ram_used / ram_total) * 100
-                cpu_line += f" | R:{ram_avail:.1f}G/{ram_total:.1f}G"
+                cpu_line += f" | 🧠{ram_avail:.0f}/{ram_total:.0f}G"
             
             if sys_temps:
                 cpu_line += " | " + " ".join(sys_temps)
@@ -931,7 +930,7 @@ def main(stdscr):
                         stdscr.addstr(max_y-1, status_pos + 3, "⚠️", curses.color_pair(11))
                     
                     log_active = (time.time() - last_log_update < 2.0)
-                    log_text = "(scrolling)" if log_active else "(waiting)"
+                    log_text = "scrolling" if log_active else "waiting"
                     log_col = curses.color_pair(2) if log_active else curses.color_pair(3)
                     stdscr.addstr(max_y-1, status_pos + 7, f" {log_text} ", curses.A_REVERSE | log_col)
             except curses.error:
@@ -940,12 +939,12 @@ def main(stdscr):
             # Update dynamic terminal title with color emojis
             t_mark = "🟦" if cpu_temp < 50 else ("🟨" if cpu_temp < 75 else "🟥")
             
-            e_part = " ⚠️ " if active_errors else ""
+            e_part = " ⚠️" if active_errors else ""
             
             log_active = (time.time() - last_log_update < 2.0)
-            log_text = "(scrolling)" if log_active else "(waiting)"
+            log_text = " scrolling" if log_active else " waiting"
             import sys
-            sys.stdout.write(f"\033]0;👀 Watch Ollama | 🌡️{t_mark}{e_part}{log_text}\007")
+            sys.stdout.write(f"\033]0;👀 Watch Ollama 🌡️{t_mark}{e_part}{log_text}\007")
             sys.stdout.flush()
 
         stdscr.refresh()
