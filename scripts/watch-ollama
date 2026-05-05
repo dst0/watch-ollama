@@ -15,26 +15,117 @@ SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 HEADER_FILE = SCRIPTS_DIR / "header.txt"
 OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
 READABLE_LOG = str(SCRIPTS_DIR.parent / "ollama_readable.log")
-# Fallback to installed location if running from dev and log not found
-if not os.path.exists(READABLE_LOG):
-    alt_log = os.path.expanduser("~/.ollama-watch-tool/ollama_readable.log")
-    if os.path.exists(alt_log):
-        READABLE_LOG = alt_log
 
-def _read_ollama_url():
-    """Read Ollama API base URL from ollama.conf, falling back to a sensible default."""
+SETTINGS = {
+    "gpu_tool": "auto",
+    "show_gpu": True,
+    "show_cpu": True,
+    "show_log": True,
+    "show_hints": True,
+    "ollama_host": "http://127.0.0.1:11435"
+}
+
+def load_settings():
     if OLLAMA_CONFIG_FILE.exists():
         for raw in OLLAMA_CONFIG_FILE.read_text().splitlines():
             line = raw.strip()
-            if line.startswith("OLLAMA_HOST="):
-                host = line.split("=", 1)[1].strip().strip('"')
-                if host:
-                    if not host.startswith("http://") and not host.startswith("https://"):
-                        host = "http://" + host
-                    return host.rstrip("/")
-    return "http://127.0.0.1:11435"
+            if not line or "=" not in line:
+                continue
+            try:
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip().strip('"')
+                if key == "OLLAMA_HOST":
+                    if val:
+                        if not val.startswith("http://") and not val.startswith("https://"):
+                            val = "http://" + val
+                        SETTINGS["ollama_host"] = val.rstrip("/")
+                elif key == "GPU_TOOL":
+                    SETTINGS["gpu_tool"] = val
+                elif key in ["SHOW_GPU", "SHOW_CPU", "SHOW_LOG", "SHOW_HINTS"]:
+                    SETTINGS[key.lower()] = val.lower() == "true"
+            except ValueError:
+                continue
 
-OLLAMA_API_URL = _read_ollama_url()
+def save_setting(key, value):
+    lines = []
+    found = False
+    key_upper = key.upper()
+    if key == "ollama_host": key_upper = "OLLAMA_HOST"
+    
+    if OLLAMA_CONFIG_FILE.exists():
+        lines = OLLAMA_CONFIG_FILE.read_text().splitlines()
+    
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(key_upper + "="):
+            new_lines.append(f"{key_upper}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+    
+    if not found:
+        new_lines.append(f"{key_upper}={value}")
+    
+    OLLAMA_CONFIG_FILE.write_text("\n".join(new_lines) + "\n")
+    SETTINGS[key] = value
+
+load_settings()
+OLLAMA_API_URL = SETTINGS["ollama_host"]
+
+def get_cpu_usage():
+    try:
+        with open('/proc/stat', 'r') as f:
+            line1 = f.readline()
+        time.sleep(0.05)
+        with open('/proc/stat', 'r') as f:
+            line2 = f.readline()
+        
+        def parse_stat(line):
+            parts = line.split()
+            idle = float(parts[4])
+            total = sum(float(x) for x in parts[1:])
+            return idle, total
+        
+        idle1, total1 = parse_stat(line1)
+        idle2, total2 = parse_stat(line2)
+        
+        diff_idle = idle2 - idle1
+        diff_total = total2 - total1
+        
+        if diff_total == 0:
+            return 0.0
+        return max(0.0, min(100.0, (1.0 - diff_idle / diff_total) * 100.0))
+    except Exception:
+        return 0.0
+
+def get_cpu_temp():
+    try:
+        paths = [
+            '/sys/class/thermal/thermal_zone0/temp',
+            '/sys/class/thermal/thermal_zone1/temp',
+            '/sys/class/hwmon/hwmon0/temp1_input',
+            '/sys/class/hwmon/hwmon1/temp1_input',
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                with open(p, 'r') as f:
+                    return float(f.read().strip()) / 1000.0
+    except Exception:
+        pass
+    return 0.0
+
+GPU_TOOLS = ["auto", "nvidia-smi", "amd-smi", "rocm-smi", "none"]
+
+def detect_gpu_tool():
+    if SETTINGS["gpu_tool"] != "auto":
+        return SETTINGS["gpu_tool"]
+    for tool in ["nvidia-smi", "amd-smi", "rocm-smi"]:
+        if subprocess.call(["which", tool], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            return tool
+    return "none"
+
+# Fallback to installed location if running from dev and log not found
 
 log_lines = deque(maxlen=5000)
 smi_text = ["Loading GPU status..."]
@@ -220,32 +311,57 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
             changed = True
         elif key == curses.KEY_DOWN:
             scroll_pos += SCROLL_LINE_STEP
-            auto_scroll = False # Manual move always pauses follow
             changed = True
+            if scroll_pos >= max_scroll:
+                scroll_pos = max_scroll
+                auto_scroll = True
+            else:
+                auto_scroll = False
         elif key == curses.KEY_PPAGE:
             scroll_pos -= log_h
             auto_scroll = False
             changed = True
         elif key == curses.KEY_NPAGE:
             scroll_pos += log_h
-            auto_scroll = False # Manual move always pauses follow
             changed = True
+            if scroll_pos >= max_scroll:
+                scroll_pos = max_scroll
+                auto_scroll = True
+            else:
+                auto_scroll = False
         elif key == ord('f') or key == ord('F'):
             auto_scroll = not auto_scroll
+            changed = True
+        elif key == ord('g') or key == ord('G'):
+            save_setting("show_gpu", not SETTINGS["show_gpu"])
+            changed = True
+        elif key == ord('c') or key == ord('C'):
+            save_setting("show_cpu", not SETTINGS["show_cpu"])
+            changed = True
+        elif key == ord('l') or key == ord('L'):
+            save_setting("show_log", not SETTINGS["show_log"])
+            changed = True
+        elif key == ord('h') or key == ord('H'):
+            save_setting("show_hints", not SETTINGS["show_hints"])
+            changed = True
+        elif key == ord('t') or key == ord('T'):
+            toggle_gpu_tool()
             changed = True
         elif key == curses.KEY_MOUSE:
             try:
                 _, _, _, _, bstate = curses.getmouse()
-                # Check for scroll up (often button 4)
                 if bstate & 0x10000: # curses.BUTTON4_PRESSED/SCROLL_UP
                     scroll_pos -= SCROLL_LINE_STEP
                     auto_scroll = False
                     changed = True
-                # Check for scroll down (often button 5)
                 elif bstate & 0x200000: # curses.BUTTON5_PRESSED/SCROLL_DOWN
                     scroll_pos += SCROLL_LINE_STEP
-                    auto_scroll = False
                     changed = True
+                    if scroll_pos >= max_scroll:
+                        scroll_pos = max_scroll
+                        auto_scroll = True
+                    else:
+                        auto_scroll = False
             except curses.error:
                 pass
 
@@ -263,6 +379,110 @@ def set_error(key, message):
         else:
             error_messages.pop(key, None)
 
+def get_temp_color(temp, color_pair_func=curses.color_pair):
+    if temp < 50:
+        return color_pair_func(1) # Cyan/Cold
+    elif temp < 75:
+        return color_pair_func(3) # Yellow/Warm
+    else:
+        return color_pair_func(11) # Red/Hot (need to init this)
+
+def toggle_gpu_tool():
+    current = SETTINGS["gpu_tool"]
+    try:
+        idx = (GPU_TOOLS.index(current) + 1) % len(GPU_TOOLS)
+    except ValueError:
+        idx = 0
+    new_tool = GPU_TOOLS[idx]
+    save_setting("gpu_tool", new_tool)
+    return new_tool
+
+def set_smi_text(lines, cpu_temp=0.0):
+    global smi_text, latest_cpu_temp
+    with smi_lock:
+        smi_text = lines
+        latest_cpu_temp = cpu_temp
+    smi_ready.set()
+
+def get_smi_snapshot():
+    with smi_lock:
+        return list(smi_text), latest_cpu_temp
+
+def poll_smi():
+    while True:
+        # GPU detection and polling
+        tool = detect_gpu_tool()
+        hw_lines = []
+        if tool != "none":
+            try:
+                output = subprocess.check_output([tool], text=True, errors="replace")
+                hw_lines = output.splitlines()
+            except Exception:
+                hw_lines = [f"({tool} unavailable)"]
+        else:
+            hw_lines = ["(no GPU tool detected)"]
+
+        # CPU load and temp
+        cpu_load = get_cpu_usage()
+        cpu_temp = get_cpu_temp()
+        
+        # Parallel sessions allowed
+        num_parallel = get_ollama_num_parallel()
+
+        # GPU/CPU split from 'ollama ps'
+        ps_info = parse_ollama_ps()
+
+        # Model details from /api/ps
+        model_lines = []
+        try:
+            req = urllib.request.Request(f"{OLLAMA_API_URL}/api/ps", method="GET")
+            with urllib.request.urlopen(req, timeout=1) as response:
+                data = json.loads(response.read().decode())
+                models = data.get("models", [])
+                if models:
+                    for m in models:
+                        name = m.get("name", "unknown")
+                        ctx = m.get("context_length", 0)
+                        size = m.get("size", 0)
+                        size_vram = m.get("size_vram", 0)
+
+                        # GPU/CPU split: prefer 'ollama ps', fall back to size_vram ratio
+                        processor = ps_info.get(name, "")
+                        if not processor and size > 0:
+                            gpu_pct = int(round(size_vram / size * 100))
+                            cpu_pct = 100 - gpu_pct
+                            processor = f"{gpu_pct}% GPU / {cpu_pct}% CPU"
+
+                        size_str = f"{size / (1024**3):.1f} GB" if size > 0 else "? GB"
+                        
+                        param_details_str = _get_model_params(name)
+
+                        model_lines.append(f"  {name} ({size_str} | {processor or 'unknown'})")
+                        model_lines.append(f"    └ ctx:{ctx}{param_details_str}")
+                else:
+                    model_lines = ["  (no active models)"]
+                set_error("ollama", None)
+        except Exception:
+            model_lines = ["  (could not reach Ollama API)"]
+            set_error("ollama", "Ollama is not reachable. Run 'ollama serve' to start it.")
+
+        full_smi_lines = []
+        header = f"=== OLLAMA  parallel:{num_parallel}  tool:{tool} ==="
+        full_smi_lines.append(header)
+        full_smi_lines.extend(model_lines)
+        full_smi_lines.append("")
+        
+        if SETTINGS["show_cpu"]:
+            cpu_line = f"CPU Load: {cpu_load:4.1f}% | Temp: {cpu_temp:4.1f}°C"
+            full_smi_lines.append(cpu_line)
+            full_smi_lines.append("")
+            
+        if SETTINGS["show_gpu"]:
+            full_smi_lines.extend(hw_lines)
+            
+        set_smi_text(full_smi_lines, cpu_temp=cpu_temp)
+        time.sleep(0.5)
+
 def get_error_lines(width):
     with error_lock:
         messages = list(error_messages.values())
@@ -270,16 +490,6 @@ def get_error_lines(width):
         return []
     text = " | ".join(messages)
     return wrap_render_line(text, width)
-
-def set_smi_text(lines):
-    global smi_text
-    with smi_lock:
-        smi_text = lines
-    smi_ready.set()
-
-def get_smi_snapshot():
-    with smi_lock:
-        return list(smi_text)
 
 def tail_log():
     global _tail_proc
@@ -436,59 +646,6 @@ def _get_model_params(model_name):
     except Exception:
         return ""
 
-def poll_smi():
-    while True:
-        # amd-smi output
-        try:
-            output = subprocess.check_output(['amd-smi'], text=True, errors="replace")
-            hw_lines = output.splitlines()
-        except Exception:
-            hw_lines = ["(amd-smi unavailable)"]
-
-        # Parallel sessions allowed
-        num_parallel = get_ollama_num_parallel()
-
-        # GPU/CPU split from 'ollama ps'
-        ps_info = parse_ollama_ps()
-
-        # Model details from /api/ps
-        model_lines = []
-        try:
-            req = urllib.request.Request(f"{OLLAMA_API_URL}/api/ps", method="GET")
-            with urllib.request.urlopen(req, timeout=1) as response:
-                data = json.loads(response.read().decode())
-                models = data.get("models", [])
-                if models:
-                    for m in models:
-                        name = m.get("name", "unknown")
-                        ctx = m.get("context_length", 0)
-                        size = m.get("size", 0)
-                        size_vram = m.get("size_vram", 0)
-
-                        # GPU/CPU split: prefer 'ollama ps', fall back to size_vram ratio
-                        processor = ps_info.get(name, "")
-                        if not processor and size > 0:
-                            gpu_pct = int(round(size_vram / size * 100))
-                            cpu_pct = 100 - gpu_pct
-                            processor = f"{gpu_pct}% GPU / {cpu_pct}% CPU"
-
-                        size_str = f"{size / (1024**3):.1f} GB" if size > 0 else "? GB"
-                        
-                        param_details_str = _get_model_params(name)
-
-                        model_lines.append(f"  {name} ({size_str} | {processor or 'unknown'})")
-                        model_lines.append(f"    └ ctx:{ctx}{param_details_str}")
-                else:
-                    model_lines = ["  (no active models)"]
-                set_error("ollama", None)
-        except Exception:
-            model_lines = ["  (could not reach Ollama API)"]
-            set_error("ollama", "Ollama is not reachable. Run 'ollama serve' to start it.")
-
-        header = f"=== OLLAMA  parallel:{num_parallel} ==="
-        set_smi_text([header] + model_lines + [""] + hw_lines)
-        time.sleep(0.5)
-
 def main(stdscr):
     # Load ASCII Header
     try:
@@ -517,6 +674,7 @@ def main(stdscr):
     curses.init_pair(2, curses.COLOR_GREEN, -1)    # ASSISTANT block
     curses.init_pair(3, curses.COLOR_YELLOW, -1)   # Separators
     curses.init_pair(4, curses.COLOR_MAGENTA, -1)  # THOUGHT block
+    curses.init_pair(11, curses.COLOR_RED, -1)     # HOT temperature
     
     t_log = threading.Thread(target=tail_log, daemon=True)
     t_log.start()
@@ -550,7 +708,7 @@ def main(stdscr):
 
     while True:
         max_y, max_x = stdscr.getmaxyx()
-        smi_snapshot = get_smi_snapshot()
+        smi_snapshot, cpu_temp = get_smi_snapshot()
 
         # Keep the top telemetry panel from jumping when Ollama briefly changes
         # model/prompt rows. Reset the reservation only when the terminal height changes.
@@ -582,10 +740,15 @@ def main(stdscr):
         stdscr.erase()
         
         # Render SMI
+        temp_color = get_temp_color(cpu_temp)
         for i in range(smi_lines):
             line = smi_snapshot[i] if i < len(smi_snapshot) else ""
             try:
-                stdscr.addstr(i, 0, line[:max_x-1])
+                if "Temp:" in line:
+                    # Special color for the CPU/GPU temperature lines if detected
+                    stdscr.addstr(i, 0, line[:max_x-1], temp_color)
+                else:
+                    stdscr.addstr(i, 0, line[:max_x-1])
             except curses.error:
                 pass
             
@@ -602,16 +765,17 @@ def main(stdscr):
             scroll_pos = min(scroll_pos, max(0, len(visible_log_lines) - log_h))
             
         # Render Log
-        for i in range(log_h):
-            idx = scroll_pos + i
-            if idx < len(visible_log_lines):
-                source_idx, line = visible_log_lines[idx]
-                color = render_attr_for_log_line(source_idx, line, log_snapshot)
-                
-                try:
-                    stdscr.addstr(smi_lines + 1 + i, 0, line[:render_width], color)
-                except curses.error:
-                    pass
+        if SETTINGS["show_log"]:
+            for i in range(log_h):
+                idx = scroll_pos + i
+                if idx < len(visible_log_lines):
+                    source_idx, line = visible_log_lines[idx]
+                    color = render_attr_for_log_line(source_idx, line, log_snapshot)
+                    
+                    try:
+                        stdscr.addstr(smi_lines + 1 + i, 0, line[:render_width], color)
+                    except curses.error:
+                        pass
         
         # Render Error Section
         error_start = max_y - 1 - error_h
@@ -627,12 +791,18 @@ def main(stdscr):
 
         # Render Status Bar
         if max_y > 0:
-            status_text = " [FOLLOWING] (Up/Dn/PgUp/PgDn: Scroll | F: Stop Follow | Q/Ctrl+C: Quit) " if auto_scroll else f" [PAUSED] (Line {scroll_pos}/{len(visible_log_lines)}) (Press F to follow) "
+            follow_txt = "FOLLOWING" if auto_scroll else "PAUSED"
+            hints = " (G:GPU C:CPU L:Log H:Hint T:Tool | F:Follow | Q:Quit) " if SETTINGS["show_hints"] else f" ({follow_txt}) "
+            status_text = f" [{follow_txt}] (Line {scroll_pos}/{len(visible_log_lines)}){hints}"
             status_line = status_text.ljust(max_x-1)
             try:
                 stdscr.addstr(max_y-1, 0, status_line[:max_x-1], curses.A_REVERSE)
             except curses.error:
                 pass
+        
+        stdscr.refresh()
+        if not input_changed:
+            time.sleep(0.02)
         
         stdscr.refresh()
         if not input_changed:
