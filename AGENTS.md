@@ -28,6 +28,10 @@ switch-gpu [vulkan|rocm|status]
 
 Common installed commands for running the TUI, configuring the Ollama host, and switching GPU backends.
 
+## Completion Workflow
+
+Unless the user explicitly asks for a different flow, finish code changes by running the full test suite, reinstalling with `./install.sh`, committing the scoped change, and pushing it to the current branch. Report any installer prompts, service restarts, or verification failures in the final response.
+
 ## Coding Style & Naming Conventions
 
 Use Python 3 and shell scripts consistent with the existing files. Prefer 4-space indentation in Python and clear function names such as `sanitize_render_text` or `parse_ollama_ps`. Keep shell variables uppercase for configuration values, for example `INSTALL_DIR` and `OLLAMA_SERVICE_DIR`. Avoid broad rewrites; this repo favors small, direct fixes to the relevant script.
