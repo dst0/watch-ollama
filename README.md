@@ -5,9 +5,10 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 ## Features
 
 - **Interactive TUI**: `watch-ollama` provides real-time GPU/SMI monitoring and readable logs.
-  - **Integrated Indicators**: 🌡️ symbols with background color indicators for intuitive temperature monitoring.
+  - **Integrated Indicators**: 🌡️ symbols with high-compatibility background color indicators for intuitive temperature monitoring.
   - **Hottest-Sensor Status**: Global system health (title and status bar) dynamically reflects the highest temperature across CPU, GPU, and all system sensors.
   - **Dynamic Title**: Synchronized color-coded status blocks (🟦, 🟩, 🟨, 🟧, 🟥) in the terminal title bar.
+  - **Official Metrics**: Reporting and TUI use official Ollama log-based token metrics (`prompt_eval_count`, `eval_count`) for precise speed and performance measurement.
   - **Smart Follow Mode**: Intelligent log tailing with dynamic `F:Pause` / `F:Follow` feedback.
 - **Background Watcher**: `ollama_watcher.py` logs processing service with systemd integration.
 - **Reporting & Stats**: `ollama_report.py` and `ollama_stats.py` for inference and hardware analysis.
