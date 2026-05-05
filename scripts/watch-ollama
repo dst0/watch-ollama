@@ -166,24 +166,28 @@ def get_system_temps():
                             for old, new in replacements.items():
                                 short_adapter = short_adapter.replace(old, new)
                             
+                            # Identify CPU temperature
+                            if short_adapter in ["CPU", "K10"]:
+                                # Prefer Tdie or Package if available, otherwise fallback to max
+                                if "Tdie" in sensor_name or "Package" in sensor_name:
+                                    cpu_temp = temp_val
+                                elif cpu_temp == 0.0 or "Tctl" not in sensor_name:
+                                    cpu_temp = max(cpu_temp, temp_val)
+                                elif "Tctl" in sensor_name and cpu_temp == 0.0:
+                                    cpu_temp = temp_val
+
                             # Hide K10/CPU/GPU if we are already showing main stats elsewhere
                             if short_adapter in ["CPU", "K10", "GPU"]:
                                 continue
 
                             # Simplify sensor: only keep numeric suffix if present
-                            # e.g., 'temp1_input' -> '1', 'temp_input' -> ''
                             short_sensor = sensor_name.replace("temp", "").replace("Sensor", "").replace("Composite", "").upper()
-                            # Use only numeric parts to keep it minimal
                             numeric_part = "".join([c for c in short_sensor if c.isdigit()])
 
                             if numeric_part:
                                 temps.append(f"{short_adapter}_{numeric_part}:{temp_val:.0f}°C")
                             else:
                                 temps.append(f"{short_adapter}:{temp_val:.0f}°C")
-                            
-                            # Keep internal cpu_temp update logic for fallback
-                            if "K10" in short_adapter or "CPU" in short_adapter:
-                                cpu_temp = max(cpu_temp, temp_val)
     except Exception:
         pass
     
@@ -892,7 +896,10 @@ def main(stdscr):
                             if len(sub) > 1:
                                 temp_str = sub[1]
                                 t_val = float(temp_str.replace("°C", ""))
-                                if not safe_addstr(" " + temp_str, get_temp_color(t_val)): break
+                                t_color = get_temp_color(t_val)
+                                if not safe_addstr(" "): break
+                                if not safe_addstr(" 🌡 ", curses.A_REVERSE | t_color): break
+                                if not safe_addstr(" " + temp_str, t_color): break
                         elif part.startswith("RAM:"):
                             if not safe_addstr("RAM:", curses.A_BOLD): break
                             r_val_str = part[4:].strip()
@@ -910,7 +917,9 @@ def main(stdscr):
                                     name, t_val_str = s_p.split(":")
                                     if not safe_addstr(name + ":", curses.A_BOLD): break
                                     t_val = float(t_val_str.replace("°C", ""))
-                                    if not safe_addstr(t_val_str, get_temp_color(t_val)): break
+                                    t_color = get_temp_color(t_val)
+                                    if not safe_addstr(" 🌡 ", curses.A_REVERSE | t_color): break
+                                    if not safe_addstr(t_val_str, t_color): break
                                 else:
                                     if not safe_addstr(s_p): break
                 else:
