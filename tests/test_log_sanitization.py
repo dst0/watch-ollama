@@ -138,6 +138,9 @@ class LogSanitizationTests(unittest.TestCase):
         self.assertFalse(auto_scroll)
         self.assertEqual(scroll_pos, 47)
 
+    def test_tui_startup_logo_has_fixed_minimum_duration(self):
+        self.assertEqual(TUI.STARTUP_LOGO_SECONDS, 2.0)
+
 
 if __name__ == "__main__":
     unittest.main()

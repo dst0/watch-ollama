@@ -52,6 +52,7 @@ ANSI_TOKEN_RE = re.compile(r"(?:\x1b|\\033)\[([0-9;]*)m")
 ansi_color_pairs = {}
 next_ansi_color_pair = 10
 SCROLL_LINE_STEP = 3
+STARTUP_LOGO_SECONDS = 2.0
 
 def sanitize_render_text(text):
     text = ANSI_ESCAPE_RE.sub("", text)
@@ -498,9 +499,8 @@ def main(stdscr):
     t_smi = threading.Thread(target=poll_smi, daemon=True)
     t_smi.start()
 
-    startup_started = time.time()
-    startup_minimum = startup_started + 2.0
-    while time.time() < startup_minimum or not (log_ready.is_set() and smi_ready.is_set()):
+    startup_until = time.time() + STARTUP_LOGO_SECONDS
+    while time.time() < startup_until:
         max_y, max_x = stdscr.getmaxyx()
         stdscr.erase()
 
