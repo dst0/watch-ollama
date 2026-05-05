@@ -82,7 +82,7 @@ prompt_yes_no() {
 
     if [ -r /dev/tty ] && [ -w /dev/tty ]; then
         printf "%b" "$prompt_text"
-        IFS= read -r -n 1 reply < /dev/tty || reply=""
+        IFS= read -t 10 -r -n 1 reply < /dev/tty || reply=""
         if [ -n "$reply" ]; then
             printf "%s\n" "$reply"
         else
@@ -90,7 +90,7 @@ prompt_yes_no() {
         fi
     else
         printf "%b" "$prompt_text"
-        IFS= read -r reply
+        IFS= read -t 10 -r reply || reply=""
     fi
 
     [[ -z "$reply" || $reply == [yY] ]]

@@ -153,7 +153,11 @@ def get_system_temps():
                             temp_val = float(v)
                             # shorten adapter name if possible
                             short_adapter = adapter.split('-')[0]
-                            temps.append(f"{short_adapter} {sensor_name}: {temp_val:.1f}°C")
+                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "S")
+                            if short_sensor:
+                                temps.append(f"{short_adapter}_{short_sensor}:{temp_val:.0f}°C")
+                            else:
+                                temps.append(f"{short_adapter}:{temp_val:.0f}°C")
                             if "k10temp" in adapter or "coretemp" in adapter or "cpu" in adapter.lower():
                                 cpu_temp = max(cpu_temp, temp_val)
     except Exception:
@@ -529,11 +533,11 @@ def poll_smi():
         full_smi_lines.append("")
         
         if SETTINGS["show_cpu"]:
-            cpu_line = f"CPU Load: {cpu_load:4.1f}% | Temp: {cpu_temp:4.1f}°C"
+            cpu_line = f"CPU: {cpu_load:4.1f}% {cpu_temp:4.1f}°C"
             if ram_total > 0:
-                cpu_line += f" | RAM: {ram_avail:.1f}G free / {ram_total:.1f}G"
+                cpu_line += f" | RAM: {ram_avail:.1f}G/{ram_total:.1f}G"
             if sys_temps:
-                cpu_line += " | Sys: " + " ".join(sys_temps)
+                cpu_line += " | " + " ".join(sys_temps)
             full_smi_lines.append(cpu_line)
             full_smi_lines.append("")
             
@@ -868,7 +872,15 @@ def main(stdscr):
                     stdscr.addstr(max_y-1, status_pos + 8, " L ", curses.A_REVERSE | log_col)
             except curses.error:
                 pass
-        
+
+            # Update dynamic terminal title with color emojis
+            t_mark = "🔵" if cpu_temp < 50 else ("🟡" if cpu_temp < 75 else "🔴")
+            e_mark = "🔴" if active_errors else "🟢"
+            l_mark = "🟢" if (time.time() - last_log_update < 2.0) else "⚪"
+            import sys
+            sys.stdout.write(f"\033]0;Watch Ollama [T:{t_mark} E:{e_mark} L:{l_mark}]\007")
+            sys.stdout.flush()
+
         stdscr.refresh()
         if not input_changed:
             time.sleep(0.02)
