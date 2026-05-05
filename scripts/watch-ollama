@@ -969,7 +969,8 @@ def main(stdscr):
         # Render Status Bar
         if max_y > 0:
             follow_txt = "FOLLOWING" if auto_scroll else "PAUSED"
-            hints = " (G:GPU C:CPU L:Log H:Hint T:Tool | F:Follow | Q:Quit) " if SETTINGS["show_hints"] else f" ({follow_txt}) "
+            follow_hint = "Pause" if auto_scroll else "Follow"
+            hints = f" (G:GPU C:CPU L:Log H:Hint T:Tool | F:{follow_hint} | Q:Quit) " if SETTINGS["show_hints"] else f" ({follow_txt}) "
             status_text = f" [{follow_txt}] (Line {scroll_pos}/{len(visible_log_lines)}){hints}"
             status_line = status_text.ljust(max_x-1)
             try:
