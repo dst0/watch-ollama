@@ -46,6 +46,11 @@ class LogSanitizationTests(unittest.TestCase):
 
         self.assertEqual(text, "WATCH")
 
+    def test_tui_gets_visible_text_from_literal_ansi_header_line(self):
+        text = TUI.visible_ansi_text("\\033[38;5;51mWATCH\\033[0m")
+
+        self.assertEqual(text, "WATCH")
+
     def test_tui_wraps_long_sanitized_lines(self):
         self.assertEqual(TUI.wrap_render_line("abcdef", 3), ["abc", "def"])
 
