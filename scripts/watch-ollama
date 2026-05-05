@@ -15,6 +15,11 @@ SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 HEADER_FILE = SCRIPTS_DIR / "header.txt"
 OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
 READABLE_LOG = str(SCRIPTS_DIR.parent / "ollama_readable.log")
+# Fallback to installed location if running from dev and log not found
+if not os.path.exists(READABLE_LOG):
+    alt_log = os.path.expanduser("~/.ollama-watch-tool/ollama_readable.log")
+    if os.path.exists(alt_log):
+        READABLE_LOG = alt_log
 
 def _read_ollama_url():
     """Read Ollama API base URL from ollama.conf, falling back to a sensible default."""
@@ -215,7 +220,7 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
             changed = True
         elif key == curses.KEY_DOWN:
             scroll_pos += SCROLL_LINE_STEP
-            auto_scroll = scroll_pos >= max_scroll
+            auto_scroll = False # Manual move always pauses follow
             changed = True
         elif key == curses.KEY_PPAGE:
             scroll_pos -= log_h
@@ -223,11 +228,26 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
             changed = True
         elif key == curses.KEY_NPAGE:
             scroll_pos += log_h
-            auto_scroll = scroll_pos >= max_scroll
+            auto_scroll = False # Manual move always pauses follow
             changed = True
         elif key == ord('f') or key == ord('F'):
             auto_scroll = True
             changed = True
+        elif key == curses.KEY_MOUSE:
+            try:
+                _, _, _, _, bstate = curses.getmouse()
+                # Check for scroll up (often button 4)
+                if bstate & 0x10000: # curses.BUTTON4_PRESSED/SCROLL_UP
+                    scroll_pos -= SCROLL_LINE_STEP
+                    auto_scroll = False
+                    changed = True
+                # Check for scroll down (often button 5)
+                elif bstate & 0x200000: # curses.BUTTON5_PRESSED/SCROLL_DOWN
+                    scroll_pos += SCROLL_LINE_STEP
+                    auto_scroll = False
+                    changed = True
+            except curses.error:
+                pass
 
     if auto_scroll:
         scroll_pos = max_scroll
@@ -484,6 +504,11 @@ def main(stdscr):
     stdscr.keypad(True)
     stdscr.timeout(16)
     
+    # Enable mouse events for scrolling
+    curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+    # Some terminals need this to enable mouse reporting
+    print("\033[?1003h", end="") 
+    
     # Setup Colors
     curses.start_color()
     curses.use_default_colors()
@@ -619,6 +644,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
+        # Disable mouse reporting
+        print("\033[?1003l", end="")
+        
         # Clean up the tail subprocess so we don't leave orphaned processes
         if _tail_proc is not None:
             try:
