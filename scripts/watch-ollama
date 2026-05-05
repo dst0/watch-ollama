@@ -862,54 +862,57 @@ def main(stdscr):
                     # Robust parsing for the telemetry oneliner
                     # Format: CPU:4.1% 43.1°C | RAM:15/32G | adapter:58°C ...
                     parts = line.split(" | ")
-                    stdscr.erase() # Clear to redraw
                     
                     curr_x = 0
+                    def safe_addstr(text, attr=0):
+                        nonlocal curr_x
+                        if curr_x >= max_x - 1: return False
+                        safe_text = text[:max_x - 1 - curr_x]
+                        if not safe_text: return False
+                        try:
+                            stdscr.addstr(i, curr_x, safe_text, attr)
+                        except curses.error:
+                            pass
+                        curr_x += len(safe_text)
+                        return True
+                    
                     for idx, part in enumerate(parts):
                         if idx > 0:
-                            stdscr.addstr(i, curr_x, " | ")
-                            curr_x += 3
+                            if not safe_addstr(" | "): break
                         
                         if part.startswith("CPU:"):
-                            stdscr.addstr(i, curr_x, "CPU:", curses.A_BOLD)
-                            curr_x += 4
+                            if not safe_addstr("CPU:", curses.A_BOLD): break
                             sub = part[4:].strip().split()
+                            if not sub: continue
                             # Load %
                             val_str = sub[0]
                             val = float(val_str.replace("%", ""))
-                            stdscr.addstr(i, curr_x, " " + val_str, get_val_color(val, 25, 50, 75, 90))
-                            curr_x += len(val_str) + 1
+                            if not safe_addstr(" " + val_str, get_val_color(val, 25, 50, 75, 90)): break
                             # Temp
-                            temp_str = sub[1]
-                            t_val = float(temp_str.replace("°C", ""))
-                            stdscr.addstr(i, curr_x, " " + temp_str, get_temp_color(t_val))
-                            curr_x += len(temp_str) + 1
+                            if len(sub) > 1:
+                                temp_str = sub[1]
+                                t_val = float(temp_str.replace("°C", ""))
+                                if not safe_addstr(" " + temp_str, get_temp_color(t_val)): break
                         elif part.startswith("RAM:"):
-                            stdscr.addstr(i, curr_x, "RAM:", curses.A_BOLD)
-                            curr_x += 4
+                            if not safe_addstr("RAM:", curses.A_BOLD): break
                             r_val_str = part[4:].strip()
-                            v1, v2 = r_val_str.split('/')
-                            # We show available/total, but color by usage %
-                            u_pct = (1.0 - float(v1.replace("G", "")) / float(v2.replace("G", ""))) * 100
-                            stdscr.addstr(i, curr_x, " " + r_val_str, get_val_color(u_pct, 25, 50, 75, 90))
-                            curr_x += len(r_val_str) + 1
+                            if "/" in r_val_str:
+                                v1, v2 = r_val_str.split('/')
+                                u_pct = (1.0 - float(v1.replace("G", "")) / float(v2.replace("G", ""))) * 100
+                                if not safe_addstr(" " + r_val_str, get_val_color(u_pct, 25, 50, 75, 90)): break
                         else:
-                            # System temps: "adapter_s:58°C"
+                            # System temps
                             s_parts = part.split()
                             for s_idx, s_p in enumerate(s_parts):
                                 if s_idx > 0:
-                                    stdscr.addstr(i, curr_x, " ")
-                                    curr_x += 1
+                                    if not safe_addstr(" "): break
                                 if ":" in s_p:
                                     name, t_val_str = s_p.split(":")
-                                    stdscr.addstr(i, curr_x, name + ":", curses.A_BOLD)
-                                    curr_x += len(name) + 1
+                                    if not safe_addstr(name + ":", curses.A_BOLD): break
                                     t_val = float(t_val_str.replace("°C", ""))
-                                    stdscr.addstr(i, curr_x, t_val_str, get_temp_color(t_val))
-                                    curr_x += len(t_val_str)
+                                    if not safe_addstr(t_val_str, get_temp_color(t_val)): break
                                 else:
-                                    stdscr.addstr(i, curr_x, s_p)
-                                    curr_x += len(s_p)
+                                    if not safe_addstr(s_p): break
                 else:
                     stdscr.addstr(i, 0, line[:max_x-1])
             except (curses.error, ValueError, IndexError):
