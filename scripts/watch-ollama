@@ -865,20 +865,20 @@ def main(stdscr):
                 # Overlay status markers if space permits
                 status_pos = max_x - 15
                 if status_pos > len(status_text) + 2:
-                    stdscr.addstr(max_y-1, status_pos, " 🌡 ", curses.A_REVERSE | temp_color)
+                    stdscr.addstr(max_y-1, status_pos, " ♨ ", curses.A_REVERSE | temp_color)
                     err_col = curses.color_pair(11) if active_errors else curses.color_pair(2)
-                    stdscr.addstr(max_y-1, status_pos + 4, " ⚠ ", curses.A_REVERSE | err_col)
+                    stdscr.addstr(max_y-1, status_pos + 4, " ✖ ", curses.A_REVERSE | err_col)
                     log_col = curses.color_pair(2) if (time.time() - last_log_update < 2.0) else curses.color_pair(3)
-                    stdscr.addstr(max_y-1, status_pos + 8, " ▤ ", curses.A_REVERSE | log_col)
+                    stdscr.addstr(max_y-1, status_pos + 8, " ☰ ", curses.A_REVERSE | log_col)
             except curses.error:
                 pass
 
             # Update dynamic terminal title with color emojis
-            t_mark = "🔵" if cpu_temp < 50 else ("🟡" if cpu_temp < 75 else "🔴")
-            e_mark = "🔴" if active_errors else "🟢"
-            l_mark = "🟢" if (time.time() - last_log_update < 2.0) else "⚪"
+            t_mark = "🟦" if cpu_temp < 50 else ("🟨" if cpu_temp < 75 else "🟥")
+            e_mark = "🟥" if active_errors else "🟩"
+            l_mark = "🟩" if (time.time() - last_log_update < 2.0) else "⬜"
             import sys
-            sys.stdout.write(f"\033]0;Watch Ollama [🌡️ {t_mark}  ⚠️ {e_mark}  📝 {l_mark}]\007")
+            sys.stdout.write(f"\033]0;Watch Ollama [♨ {t_mark}  ✖ {e_mark}  ☰ {l_mark}]\007")
             sys.stdout.flush()
 
         stdscr.refresh()
