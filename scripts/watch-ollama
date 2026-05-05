@@ -139,7 +139,8 @@ def get_cpu_temp():
 
 def get_system_temps():
     temps = []
-    max_temp = 0.0
+    # This will be used as the overall system 'cpu_temp' for indicators
+    max_sys_temp = 0.0
     try:
         output = subprocess.check_output(["sensors", "-j"], text=True, errors="replace", stderr=subprocess.DEVNULL)
         import json
@@ -151,7 +152,8 @@ def get_system_temps():
                     for k, v in readings.items():
                         if k.endswith("_input") and "temp" in k:
                             temp_val = float(v)
-                            max_temp = max(max_temp, temp_val)
+                            # Track max for overall system status
+                            max_sys_temp = max(max_sys_temp, temp_val)
                             
                             short_adapter = adapter.split('-')[0].upper()
                             # Mapping: original -> short
@@ -181,10 +183,10 @@ def get_system_temps():
     except Exception:
         pass
     
-    if max_temp == 0.0:
-        max_temp = get_cpu_temp()
+    if max_sys_temp == 0.0:
+        max_sys_temp = get_cpu_temp()
         
-    return max_temp, temps
+    return max_sys_temp, temps
 
 GPU_TOOLS = ["auto", "nvidia-smi", "amd-smi", "rocm-smi", "none"]
 
