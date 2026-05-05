@@ -21,14 +21,14 @@ class StatusRenderingTests(unittest.TestCase):
         # Yellow (Warm) < 70
         self.assertEqual(TUI.get_val_color(60, 35, 55, 70, 85, cp), 3)
         # Orange (Hot-Warm) < 85
-        self.assertEqual(TUI.get_val_color(77, 35, 55, 70, 85, cp), 12)
+        self.assertEqual(TUI.get_val_color(77, 35, 55, 70, 85, cp), 6)
         # Red (Hot) >= 85
         self.assertEqual(TUI.get_val_color(90, 35, 55, 70, 85, cp), 11)
 
     def test_get_temp_color_uses_correct_thresholds(self):
         cp = lambda n: n
-        # 77 should be Orange (12)
-        self.assertEqual(TUI.get_temp_color(77, cp), 12)
+        # 77 should be Orange (6)
+        self.assertEqual(TUI.get_temp_color(77, cp), 6)
         # 30 should be Blue (5)
         self.assertEqual(TUI.get_temp_color(30, cp), 5)
 

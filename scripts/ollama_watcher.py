@@ -87,6 +87,14 @@ def main():
         prompt_start_time = 0
         in_generation = False
         
+        # Log-based metrics
+        log_metrics = {
+            'prompt_eval_count': 0,
+            'prompt_eval_duration': 0.0,
+            'eval_count': 0,
+            'eval_duration': 0.0
+        }
+        
         while True:
             line = f.readline()
             if not line:
@@ -98,10 +106,27 @@ def main():
                     time.sleep(0.05)
                 continue
             
+            # --- PARSE LOG METRICS ---
+            if 'msg="request complete"' in line:
+                m_pec = re.search(r'prompt_eval_count=(\d+)', line)
+                m_ped = re.search(r'prompt_eval_duration=([0-9a-zA-Z.µμ]+)', line)
+                m_ec = re.search(r'\beval_count=(\d+)', line)
+                m_ed = re.search(r'\beval_duration=([0-9a-zA-Z.µμ]+)', line)
+                
+                if m_pec: log_metrics['prompt_eval_count'] = int(m_pec.group(1))
+                if m_ped: log_metrics['prompt_eval_duration'] = parse_duration(m_ped.group(1))
+                if m_ec: log_metrics['eval_count'] = int(m_ec.group(1))
+                if m_ed: log_metrics['eval_duration'] = parse_duration(m_ed.group(1))
+
             # --- START PROMPT ---
             if "msg=encoded string=" in line:
                 if in_generation:
                     continue
+
+                # Reset log metrics for new prompt
+                log_metrics = {k: 0 for k in log_metrics}
+                log_metrics['prompt_eval_duration'] = 0.0
+                log_metrics['eval_duration'] = 0.0
 
                 match = re.search(r'msg=encoded string="(.*)" ids=', line)
                 if match:
@@ -191,15 +216,23 @@ def main():
                 status = status_match.group(1) if status_match else "???"
 
                 if status.startswith('2'):
-                    # Calculate manual metrics if we have the token counts
                     stats_str = f"[LATENCY: {latency}]"
                     
-                    if eval_count > 0 and generation_start_time > 0:
+                    # Use log-based metrics if available, otherwise fall back to manual
+                    if log_metrics['eval_count'] > 0 and log_metrics['eval_duration'] > 0:
+                        eval_c = log_metrics['eval_count']
+                        tps = eval_c / log_metrics['eval_duration']
+                        stats_str += f" [GEN: {eval_c} tokens | {tps:.2f} t/s]"
+                    elif eval_count > 0 and generation_start_time > 0:
                         gen_duration = time.time() - generation_start_time
                         tps = eval_count / gen_duration if gen_duration > 0 else 0
                         stats_str += f" [GEN: {eval_count} tokens | {tps:.2f} t/s]"
                         
-                    if prompt_eval_count > 0 and prompt_start_time > 0 and generation_start_time > 0:
+                    if log_metrics['prompt_eval_count'] > 0 and log_metrics['prompt_eval_duration'] > 0:
+                        prompt_c = log_metrics['prompt_eval_count']
+                        pps = prompt_c / log_metrics['prompt_eval_duration']
+                        stats_str += f" [PP: {prompt_c} tokens | {pps:.2f} pp/s]"
+                    elif prompt_eval_count > 0 and prompt_start_time > 0 and generation_start_time > 0:
                         pp_duration = generation_start_time - prompt_start_time
                         pps = prompt_eval_count / pp_duration if pp_duration > 0 else 0
                         stats_str += f" [PP: {prompt_eval_count} tokens | {pps:.2f} pp/s]"

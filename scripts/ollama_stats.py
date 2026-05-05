@@ -1,24 +1,40 @@
 import re
 import json
 import sys
+import os
 
 LOG_FILE = "/var/log/ollama.log"
 
+def parse_duration(d_str):
+    """Parse a Go duration string (e.g. '1.5s', '500ms') into seconds."""
+    if not d_str: return 0.0
+    if 'ms' in d_str:
+        return float(d_str.replace('ms', '')) / 1000.0
+    elif 'µs' in d_str or 'us' in d_str:
+        return float(re.sub(r'[µu]s', '', d_str)) / 1000000.0
+    elif 's' in d_str:
+        m = re.match(r'(?:(\d+)m)?([\d.]+)s', d_str)
+        if m:
+            mins = float(m.group(1) or 0)
+            secs = float(m.group(2))
+            return mins * 60 + secs
+    return 0.0
+
 def parse_logs():
-    current_request = None
-    
     # Regex patterns
-    start_pattern = re.compile(r'time=.* level=INFO source=routes.go:.* msg="vram-based default context"')
     config_pattern = re.compile(r'time=.* level=INFO source=types.go:42 msg="inference compute" id=(.*) library=(.*) compute=(.*) name=(.*) total="(.*)" available="(.*)"')
-    request_pattern = re.compile(r'level=TRACE source=bytepairencoding.go:287 msg=encoded string=".*" ids="\[(.*)\]"')
-    gin_pattern = re.compile(r'\[GIN\].*\| 200 \| \s*(.*) \|.*POST\s*"/api/generate"')
 
     print("=== OLLAMA SYSTEM STARTUP / CONFIG ===")
     
     try:
+        if not os.path.exists(LOG_FILE):
+            print(f"Error: {LOG_FILE} not found.")
+            return
+
         with open(LOG_FILE, 'r', errors="replace") as f:
             lines = f.readlines()
             
+            last_metrics = None
             for i, line in enumerate(lines):
                 # Detect Config/Hardware Info
                 config_match = config_pattern.search(line)
@@ -39,17 +55,36 @@ def parse_logs():
                         
                         print("\n--- CONVERSATION ---")
                         print(clean_content)
-                        
+                
+                # Parse Log Metrics from "request complete"
+                if 'msg="request complete"' in line:
+                    m_pec = re.search(r'prompt_eval_count=(\d+)', line)
+                    m_ped = re.search(r'prompt_eval_duration=([0-9a-zA-Z.µμ]+)', line)
+                    m_ec = re.search(r'\beval_count=(\d+)', line)
+                    m_ed = re.search(r'\beval_duration=([0-9a-zA-Z.µμ]+)', line)
+                    
+                    if m_pec and m_ped and m_ec and m_ed:
+                        last_metrics = {
+                            'pec': int(m_pec.group(1)),
+                            'ped': parse_duration(m_ped.group(1)),
+                            'ec': int(m_ec.group(1)),
+                            'ed': parse_duration(m_ed.group(1))
+                        }
+
                 # Detect Performance Stats (from GIN log or surrounding DEBUG logs)
-                if "/api/generate" in line and "[GIN]" in line:
+                if "[GIN]" in line and any(x in line for x in ["/api/generate", "/api/chat", "/v1/chat/completions"]):
                     parts = line.split("|")
                     if len(parts) > 2:
                         duration = parts[2].strip()
                         print(f"Total Latency: {duration}")
+                        if last_metrics:
+                            pps = last_metrics['pec'] / last_metrics['ped'] if last_metrics['ped'] > 0 else 0
+                            tps = last_metrics['ec'] / last_metrics['ed'] if last_metrics['ed'] > 0 else 0
+                            print(f"Prompt: {last_metrics['pec']} tokens ({pps:.2f} tokens/s)")
+                            print(f"Generation: {last_metrics['ec']} tokens ({tps:.2f} tokens/s)")
+                            last_metrics = None
                         print("=" * 40)
 
-    except FileNotFoundError:
-        print(f"Error: {LOG_FILE} not found.")
     except Exception as e:
         print(f"Error parsing logs: {e}")
 

@@ -467,7 +467,7 @@ def get_val_color(val, t1, t2, t3, t4, color_pair_func=curses.color_pair):
     elif val < t3:
         return color_pair_func(3)  # Yellow (Warm)
     elif val < t4:
-        return color_pair_func(12) # Orange (Hot-Warm)
+        return color_pair_func(6)  # Orange (Hot-Warm)
     else:
         return color_pair_func(11) # Red (Hot)
 
@@ -781,9 +781,9 @@ def main(stdscr):
     
     # Orange (if supported by terminal)
     if curses.COLORS >= 256:
-        curses.init_pair(12, 208, -1) 
+        curses.init_pair(6, 208, -1) 
     else:
-        curses.init_pair(12, curses.COLOR_YELLOW, -1) # Fallback to Yellow
+        curses.init_pair(6, curses.COLOR_YELLOW, -1) # Fallback to Yellow
     
     # Ensure standard color pairs are usable if missing
     if curses.COLORS >= 8:
