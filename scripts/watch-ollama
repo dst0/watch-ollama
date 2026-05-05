@@ -940,12 +940,12 @@ def main(stdscr):
             # Update dynamic terminal title with color emojis
             t_mark = "🟦" if cpu_temp < 50 else ("🟨" if cpu_temp < 75 else "🟥")
             
-            e_part = " ⚠️🟥 " if active_errors else ""
+            e_part = " ⚠️ " if active_errors else ""
             
             log_active = (time.time() - last_log_update < 2.0)
             log_text = "(scrolling)" if log_active else "(waiting)"
             import sys
-            sys.stdout.write(f"\033]0;👀 Watch Ollama [🌡️{t_mark}{e_part} {log_text}]\007")
+            sys.stdout.write(f"\033]0;👀 Watch Ollama [🌡️{t_mark}{e_part}{log_text}]\007")
             sys.stdout.flush()
 
         stdscr.refresh()
