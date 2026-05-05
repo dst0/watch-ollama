@@ -83,6 +83,43 @@ def role_color_pair_for_line(line):
 def is_role_marker_line(line):
     return role_color_pair_for_line(line) is not None
 
+def is_separator_line(line):
+    return line.startswith("====================") or line.startswith("--------------------------------------------------------------------------------")
+
+def line_opens_thought(line):
+    return "<think>" in line or "[THOUGHT]" in line
+
+def line_closes_thought(line):
+    return "</think>" in line or "[/THOUGHT]" in line
+
+def line_is_in_thought(source_idx, log_snapshot):
+    for j in range(source_idx, max(-1, source_idx - 500), -1):
+        check_line = sanitize_render_text(log_snapshot[j])
+        if line_opens_thought(check_line):
+            if line_closes_thought(check_line):
+                return max(check_line.rfind("</think>"), check_line.rfind("[/THOUGHT]")) < max(
+                    check_line.rfind("<think>"), check_line.rfind("[THOUGHT]")
+                )
+            return True
+        if line_closes_thought(check_line) or is_separator_line(check_line):
+            return False
+    return False
+
+def render_attr_for_log_line(source_idx, line, log_snapshot, color_pair=None):
+    if color_pair is None:
+        color_pair = curses.color_pair
+
+    role_color_pair = role_color_pair_for_line(line)
+    if role_color_pair is not None:
+        return color_pair(role_color_pair) | curses.A_BOLD
+    if is_separator_line(line):
+        return color_pair(3) | curses.A_BOLD
+    if line_opens_thought(line) or line_closes_thought(line):
+        return color_pair(4) | curses.A_BOLD
+    if line_is_in_thought(source_idx, log_snapshot):
+        return color_pair(4)
+    return color_pair(0)
+
 def visible_ansi_text(line):
     return ANSI_TOKEN_RE.sub("", line)
 
@@ -544,46 +581,7 @@ def main(stdscr):
             idx = scroll_pos + i
             if idx < len(visible_log_lines):
                 source_idx, line = visible_log_lines[idx]
-                
-                # Determine block color by scanning backwards (up to 500 lines)
-                block_color = curses.color_pair(0)
-                is_thought = False
-                
-                for j in range(source_idx, max(-1, source_idx - 500), -1):
-                    check_line = sanitize_render_text(log_snapshot[j])
-                    role_color_pair = role_color_pair_for_line(check_line)
-                    if role_color_pair is not None:
-                        block_color = curses.color_pair(role_color_pair)
-                        break
-                    elif check_line.startswith("====================") or check_line.startswith("--------------------------------------------------------------------------------"):
-                        break # Reset to default if we cross a separator
-                
-                # Check if we're inside a THOUGHT block
-                for j in range(source_idx, max(-1, source_idx - 500), -1):
-                    check_line = sanitize_render_text(log_snapshot[j])
-                    if "<think>" in check_line or "[THOUGHT]" in check_line:
-                        is_thought = True
-                        if "</think>" in check_line or "[/THOUGHT]" in check_line:
-                            if max(check_line.rfind("</think>"), check_line.rfind("[/THOUGHT]")) > max(check_line.rfind("<think>"), check_line.rfind("[THOUGHT]")):
-                                is_thought = False
-                        break
-                    elif "</think>" in check_line or "[/THOUGHT]" in check_line:
-                        is_thought = False
-                        break
-                    elif check_line.startswith("====================") or check_line.startswith("--------------------------------------------------------------------------------"):
-                        is_thought = False
-                        break
-
-                # Apply base block color
-                color = curses.color_pair(4) if is_thought else block_color
-                
-                # Override color for specific marker lines
-                if is_role_marker_line(line):
-                    color = color | curses.A_BOLD
-                elif line.startswith("====================") or line.startswith("--------------------------------------------------------------------------------"):
-                    color = curses.color_pair(3) | curses.A_BOLD
-                elif "<think>" in line or "</think>" in line or "[THOUGHT]" in line or "[/THOUGHT]" in line:
-                    color = curses.color_pair(4) | curses.A_BOLD
+                color = render_attr_for_log_line(source_idx, line, log_snapshot)
                 
                 try:
                     stdscr.addstr(smi_lines + 1 + i, 0, line[:render_width], color)

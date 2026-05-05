@@ -37,6 +37,14 @@ class LogSanitizationTests(unittest.TestCase):
 
         self.assertTrue(WATCHER.prompt_ends_with_assistant_marker(prompt))
 
+    def test_format_text_keeps_prompt_content_and_role_boundaries_visible(self):
+        prompt = WATCHER.format_text(
+            "<|im_start|>userHello<|im_end|><|im_start|>assistantHi<|im_end|>"
+        )
+
+        self.assertEqual(prompt, "### USER\nHello\n\n### ASSISTANT\nHi")
+        self.assertFalse(WATCHER.prompt_ends_with_assistant_marker(prompt))
+
     def test_tui_sanitizes_control_sequences_before_rendering(self):
         text = TUI.sanitize_render_text("\x1b[31m<|im_start|>assistant\tok\r\x00<|endoftext|>")
 
@@ -93,6 +101,14 @@ class LogSanitizationTests(unittest.TestCase):
         self.assertEqual(TUI.role_color_pair_for_line("### SYSTEM"), 2)
         self.assertIsNone(TUI.role_color_pair_for_line("USER: quoted chat history"))
         self.assertIsNone(TUI.role_color_pair_for_line("ASSISTANT: quoted chat history"))
+
+    def test_tui_chat_history_content_uses_default_color(self):
+        self.assertEqual(
+            TUI.render_attr_for_log_line(
+                1, "normal prompt content", ["### USER", "normal prompt content"], color_pair=lambda n: n
+            ),
+            0,
+        )
 
     def test_tui_collects_all_pending_input(self):
         class FakeScreen:

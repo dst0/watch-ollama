@@ -27,16 +27,19 @@ def decode_go_string(s):
         return s.replace('\\\\"', '"').replace('\\\\n', '\n').replace('\\\\t', '\t').replace('\\"', '"').replace('\\n', '\n').replace('\\t', '\t')
 
 def format_text(text):
-    text = sanitize_decoded_text(text)
+    text = text.replace('\\u003c', '<').replace('\\u003e', '>')
+    text = text.replace('\r', '')
     text = text.replace('<|im_start|>system', '\n### SYSTEM')
     text = text.replace('<|im_start|>user', '\n### USER')
     text = text.replace('<|im_start|>assistant', '\n### ASSISTANT')
     text = text.replace('<|im_end|>', '\n')
     text = text.replace('<|endoftext|>', '\n')
     text = SPECIAL_TOKENS_RE.sub('', text)
-    text = text.replace('\\u003c', '<').replace('\\u003e', '>')
+    text = BARE_IM_START_RE.sub('', text)
+    text = CONTROL_CHARS_RE.sub('', text)
+    text = re.sub(r'\n(### (?:SYSTEM|USER|ASSISTANT))(?=\S)', r'\n\1\n', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
-    return text.strip()
+    return text.strip("\n")
 
 def sanitize_decoded_text(text):
     text = text.replace('\\u003c', '<').replace('\\u003e', '>')
