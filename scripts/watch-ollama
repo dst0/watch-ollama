@@ -166,8 +166,8 @@ def get_system_temps():
                             for old, new in replacements.items():
                                 short_adapter = short_adapter.replace(old, new)
                             
-                            # Hide K10/CPU if we are already showing main CPU stats elsewhere
-                            if short_adapter in ["CPU", "K10"]:
+                            # Hide K10/CPU/GPU if we are already showing main stats elsewhere
+                            if short_adapter in ["CPU", "K10", "GPU"]:
                                 continue
 
                             # Simplify sensor: only keep numeric suffix if present
@@ -892,7 +892,7 @@ def main(stdscr):
                                     curr_x += 1
                                 if ":" in s_p:
                                     name, t_val_str = s_p.split(":")
-                                    stdscr.addstr(i, curr_x, name + ":")
+                                    stdscr.addstr(i, curr_x, name + ":", curses.A_BOLD)
                                     curr_x += len(name) + 1
                                     t_val = float(t_val_str.replace("°C", ""))
                                     stdscr.addstr(i, curr_x, t_val_str, get_temp_color(t_val))
@@ -952,15 +952,16 @@ def main(stdscr):
                 status_pos = max_x - 22
                 if status_pos > len(status_text) + 2:
                     temp_color = get_temp_color(cpu_temp)
-                    stdscr.addstr(max_y-1, status_pos, "🌡", curses.A_REVERSE | temp_color)
+                    # Merge thermometer and color: symbol + color-based background
+                    stdscr.addstr(max_y-1, status_pos, " 🌡 ", curses.A_REVERSE | temp_color)
+                    
                     if active_errors:
-                        # "without indicator, just symbol" -> Remove A_REVERSE or just print it plainly
-                        stdscr.addstr(max_y-1, status_pos + 3, "⚠️", curses.color_pair(11))
+                        stdscr.addstr(max_y-1, status_pos + 4, " ⚠️ ", curses.color_pair(11) | curses.A_REVERSE)
                     
                     log_active = (time.time() - last_log_update < 2.0)
                     log_text = "output" if log_active else "idle"
                     log_col = curses.color_pair(2) if log_active else curses.color_pair(3)
-                    stdscr.addstr(max_y-1, status_pos + 7, f" {log_text} ", curses.A_REVERSE | log_col)
+                    stdscr.addstr(max_y-1, status_pos + 9, f" {log_text} ", curses.A_REVERSE | log_col)
             except curses.error:
                 pass
 
