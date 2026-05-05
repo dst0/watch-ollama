@@ -924,6 +924,7 @@ def main(stdscr):
                 # Overlay status markers if space permits
                 status_pos = max_x - 22
                 if status_pos > len(status_text) + 2:
+                    temp_color = get_temp_color(cpu_temp)
                     stdscr.addstr(max_y-1, status_pos, " 🌡 ", curses.A_REVERSE | temp_color)
                     if active_errors:
                         stdscr.addstr(max_y-1, status_pos + 4, " ⚠️ ", curses.A_REVERSE | curses.color_pair(11))
