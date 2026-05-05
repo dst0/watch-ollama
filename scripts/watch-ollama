@@ -538,10 +538,10 @@ def poll_smi():
         if SETTINGS["show_cpu"]:
             cpu_pct = f"{cpu_load:2.0f}%"
             temp_str = f"{cpu_temp:2.0f}°C"
-            cpu_line = f"💻{cpu_pct} {temp_str}"
+            cpu_line = f"CPU:{cpu_pct} {temp_str}"
             
             if ram_total > 0:
-                cpu_line += f" | 🧠{ram_avail:.0f}/{ram_total:.0f}G"
+                cpu_line += f" | RAM:{ram_avail:.0f}/{ram_total:.0f}G"
             
             if sys_temps:
                 cpu_line += " | " + " ".join(sys_temps)
@@ -820,9 +820,9 @@ def main(stdscr):
         for i in range(smi_lines):
             line = smi_snapshot[i] if i < len(smi_snapshot) else ""
             try:
-                if "C:" in line and "R:" in line:
+                if "CPU:" in line and "RAM:" in line:
                     # Robust parsing for the telemetry oneliner
-                    # Format: C: 4.1% 43.1°C | R: 15.2G/32.0G | adapter:58°C ...
+                    # Format: CPU: 4.1% 43.1°C | RAM: 15G/32G | adapter:58°C ...
                     parts = line.split(" | ")
                     stdscr.addstr(i, 0, "") # Reset position
                     
@@ -832,10 +832,10 @@ def main(stdscr):
                             stdscr.addstr(i, curr_x, " | ")
                             curr_x += 3
                         
-                        if part.startswith("C:"):
-                            stdscr.addstr(i, curr_x, "C:", curses.A_BOLD)
-                            curr_x += 2
-                            sub = part[2:].strip().split() # ["4.1%", "43.1°C"]
+                        if part.startswith("CPU:"):
+                            stdscr.addstr(i, curr_x, "CPU:", curses.A_BOLD)
+                            curr_x += 4
+                            sub = part[4:].strip().split()
                             # Load %
                             val_str = sub[0]
                             val = float(val_str.replace("%", ""))
@@ -846,10 +846,10 @@ def main(stdscr):
                             t_val = float(temp_str.replace("°C", ""))
                             stdscr.addstr(i, curr_x, " " + temp_str, get_temp_color(t_val))
                             curr_x += len(temp_str) + 1
-                        elif part.startswith("R:"):
-                            stdscr.addstr(i, curr_x, "R:", curses.A_BOLD)
-                            curr_x += 2
-                            r_val_str = part[2:].strip() # "15.2G/32.0G"
+                        elif part.startswith("RAM:"):
+                            stdscr.addstr(i, curr_x, "RAM:", curses.A_BOLD)
+                            curr_x += 4
+                            r_val_str = part[4:].strip()
                             v1, v2 = r_val_str.split('/')
                             # We show available/total, but color by usage %
                             u_pct = (1.0 - float(v1.replace("G", "")) / float(v2.replace("G", ""))) * 100
