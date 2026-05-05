@@ -151,9 +151,15 @@ def get_system_temps():
                     for k, v in readings.items():
                         if k.endswith("_input") and "temp" in k:
                             temp_val = float(v)
-                            # shorten adapter name if possible
-                            short_adapter = adapter.split('-')[0].replace("composite", "cmp").replace("package", "pkg").replace("coretemp", "cpu")
-                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "S").replace("Composite", "C")
+                            short_adapter = adapter.split('-')[0].lower()
+                            replacements = {"amdgpu": "gpu", "k10temp": "cpu", "coretemp": "cpu", "nvme": "ssd"}
+                            for old, new in replacements.items():
+                                short_adapter = short_adapter.replace(old, new)
+                            
+                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "S").replace("Composite", "C").lower()
+                            # Strip common sensor numbers if just one
+                            if short_sensor == "1": short_sensor = ""
+
                             if short_sensor:
                                 temps.append(f"{short_adapter}_{short_sensor}:{temp_val:.0f}°C")
                             else:
