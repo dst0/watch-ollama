@@ -885,7 +885,7 @@ def main(stdscr):
                             curr_x += len(r_val_str) + 1
                         else:
                             # System temps: "adapter_s:58°C"
-                            s_parts = part.split()
+                            # This part handles "NET:48°C" or similar
                             for s_idx, s_p in enumerate(s_parts):
                                 if s_idx > 0:
                                     stdscr.addstr(i, curr_x, " ")
@@ -895,6 +895,7 @@ def main(stdscr):
                                     stdscr.addstr(i, curr_x, name + ":", curses.A_BOLD)
                                     curr_x += len(name) + 1
                                     t_val = float(t_val_str.replace("°C", ""))
+                                    # Add color here
                                     stdscr.addstr(i, curr_x, t_val_str, get_temp_color(t_val))
                                     curr_x += len(t_val_str)
                                 else:
