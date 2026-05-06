@@ -1,6 +1,6 @@
 # To build a new Modelfile based on this, replace FROM with:
-# FROM Qwen3.6-27B-Q3KL-16k:latest
-FROM /usr/share/ollama/.ollama/models/blobs/sha256-6cb7fd328697744497adcb152d67239a2e31ef79e0033098b94db5771a65831c
+# FROM Qwen3.6-27B-Q3KM-32k:latest
+FROM /usr/share/ollama/.ollama/models/blobs/sha256-bdfa99d488b501f5ca711f35c930f005319a064eabcaae23290571a25c499eeb
 TEMPLATE """
 {{- if or .System .Tools }}<|im_start|>system
 {{- if .Tools }}
