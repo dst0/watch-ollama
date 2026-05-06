@@ -70,6 +70,35 @@ CPU:  8% 42°C | RAM: 9/32G | GPU:65°C | SSD: 37°C
 https://github.com/user-attachments/assets/92d20147-c692-4d68-bb0a-2fbf9f5f47b2
 
 
+## Performance Tuning
+
+To optimize performance and minimize background CPU usage, consider the following recommendations:
+
+### 1. Persistent Loading (`OLLAMA_KEEP_ALIVE`)
+Short keep-alive durations cause frequent, high-cost model reloads. 
+- Use the `setup-ollama` script to set a longer duration (e.g., `3m` or longer) to keep the model resident in VRAM.
+
+### 2. Recommended Parameters
+When generating Modelfiles with `make-modelfile`, use these tuned parameters for a balance between speed and efficiency:
+- **`num_ctx`**: `32768` (Default, lower if memory constrained)
+- **`num_thread`**: `4` (Adjust based on core availability)
+- **`num_batch`**: `256`
+
+### 3. CPU Power Limiting
+Prevent Ollama from saturating your system CPU by limiting its quota via systemd. Create or edit `/etc/systemd/system/ollama.service.d/40-cpu-limit.conf`:
+
+```ini
+[Service]
+# Limits CPU usage to 400% (effectively 4 cores)
+CPUQuota=400%
+```
+
+After creating the file, apply the changes:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
+
 ## Repository Structure
 - **`scripts/`**: All executable tools and utility scripts.
 - **`systemd/`**: Systemd unit files for background services.
