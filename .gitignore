@@ -2,3 +2,12 @@
 __pycache__/
 *.py[cod]
 *.pyo
+
+# Logs
+*.log
+watch-ollama-debug.log
+
+# Temporary/Test files
+Modelfile-Test
+Modelfile-*
+!Modelfile

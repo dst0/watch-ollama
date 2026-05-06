@@ -1,6 +1,6 @@
 TEMPLATE {{ .Prompt }}
-RENDERER qwen3.6
-PARSER qwen3.6
+RENDERER qwen3.5
+PARSER qwen3.5
 
 PARAMETER presence_penalty 1.5
 PARAMETER temperature 1
