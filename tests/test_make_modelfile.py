@@ -281,7 +281,18 @@ class TestMultiSelectLogic(unittest.TestCase):
         self.assertTrue(result[0].isdigit(), f"Expected numeric option, got: {result[0]!r}")
 
 
-class TestModelfileGeneration(unittest.TestCase):
+class TestSanitization(unittest.TestCase):
+    def test_sanitize_logic(self):
+        import re
+        def sanitize(s):
+            return re.sub(r'[^a-z0-9:-]', '-', s.lower())
+
+        self.assertEqual(sanitize("MyModel:32k-b512"), "mymodel:32k-b512")
+        self.assertEqual(sanitize("Invalid_Name!"), "invalid-name-")
+        self.assertEqual(sanitize("qwen_qwen3.5"), "qwen-qwen3-5")
+        self.assertEqual(sanitize("model:tag"), "model:tag")
+
+
     """Tests for the file-generation loop logic."""
 
     def _gen_filenames(self, model_name, ctx_values, batch_values):

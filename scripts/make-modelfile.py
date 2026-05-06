@@ -480,14 +480,19 @@ def _run(stdscr):
         
         # Derive o_name from filename, but use a colon for the tag part
         # Modelfile-{model_name}-{label}-b{batch}
+        import re
+        def sanitize(s):
+            # Keep alphanumeric, hyphens, and colons (for tag), replace rest with hyphen
+            return re.sub(r'[^a-z0-9:-]', '-', s.lower())
+
         name_parts = fname.replace("Modelfile-", "").split("-")
         if len(name_parts) >= 3:
             # The last two parts are label and batch (e.g., 64k and b256)
-            tag = "-".join(name_parts[-2:])
-            base = "-".join(name_parts[:-2])
-            o_name = f"{base}:{tag}".lower()
+            tag = sanitize("-".join(name_parts[-2:]))
+            base = sanitize("-".join(name_parts[:-2]))
+            o_name = f"{base}:{tag}"
         else:
-            o_name = fname.replace("Modelfile-", "").lower()
+            o_name = sanitize(fname.replace("Modelfile-", ""))
 
         # Simple scroll/wrap protection
         row = i + 3
