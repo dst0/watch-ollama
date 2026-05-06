@@ -1,6 +1,11 @@
 TEMPLATE """
 {{- if or .System .Tools }}<|im_start|>system
+{{- if .System }}
+
+{{ .System }}
+{{- end }}
 {{- if .Tools }}
+
 # Tools
 
 You are a helpful assistant with access to tools. Use tools only when they are needed to answer accurately or perform an action.
@@ -28,10 +33,6 @@ Tool rules:
 - Do not place tool calls inside <think> blocks.
 - Do not call a tool when the answer is already known and no external action is needed.
 - If no tool is needed, answer normally.
-{{- end }}
-{{- if .System }}
-
-{{ .System }}
 {{- end }}<|im_end|>
 {{ end }}
 {{- range .Messages }}
