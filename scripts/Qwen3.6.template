@@ -1,6 +1,11 @@
 TEMPLATE """
-{{- if or .System .Tools }}<|im_start|>system
+{{- if or .System .Tools .Thinking }}<|im_start|>system
+{{- if .System }}
+
+{{ .System }}
+{{- end }}
 {{- if .Tools }}
+
 # Tools
 
 You are a helpful assistant with access to tools. Use tools only when they are needed to answer accurately or perform an action.
@@ -29,9 +34,10 @@ Tool rules:
 - Do not call a tool when the answer is already known and no external action is needed.
 - If no tool is needed, answer normally.
 {{- end }}
-{{- if .System }}
-
-{{ .System }}
+{{- if .Thinking }}
+/think
+{{- else }}
+/no_think
 {{- end }}<|im_end|>
 {{ end }}
 {{- range .Messages }}
@@ -56,8 +62,7 @@ Tool rules:
 {{- else if eq .Role "tool" }}<|im_start|>user
 <tool_response>
 {{ .Content }}
-</tool_response>
-Use the tool response above to continue answering the original user request.<|im_end|>
+</tool_response><|im_end|>
 {{- end }}
 {{- end }}<|im_start|>assistant
 """
