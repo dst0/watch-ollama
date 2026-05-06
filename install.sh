@@ -189,6 +189,7 @@ add_aliases() {
             echo 'alias setup-ollama  "$HOME/.ollama-watch-tool/scripts/setup-ollama.sh"'
             echo 'alias switch-gpu    "$HOME/.ollama-watch-tool/scripts/switch-gpu.sh"'
             echo 'alias update-ollama "$HOME/.ollama-watch-tool/scripts/update-ollama.sh"'
+            echo 'alias make-modelfile "python3 $HOME/.ollama-watch-tool/scripts/make-modelfile.py"'
             echo 'alias ollama-report "python3 $HOME/.ollama-watch-tool/scripts/ollama_report.py"'
             echo 'alias ollama-stats  "python3 $HOME/.ollama-watch-tool/scripts/ollama_stats.py"'
             echo 'alias unwatch-ollama "$HOME/.ollama-watch-tool/scripts/uninstall.sh"'
@@ -202,6 +203,7 @@ add_aliases() {
             echo "alias setup-ollama='\$HOME/.ollama-watch-tool/scripts/setup-ollama.sh'"
             echo "alias switch-gpu='\$HOME/.ollama-watch-tool/scripts/switch-gpu.sh'"
             echo "alias update-ollama='\$HOME/.ollama-watch-tool/scripts/update-ollama.sh'"
+            echo "alias make-modelfile='python3 \$HOME/.ollama-watch-tool/scripts/make-modelfile.py'"
             echo "alias ollama-report='python3 \$HOME/.ollama-watch-tool/scripts/ollama_report.py'"
             echo "alias ollama-stats='python3 \$HOME/.ollama-watch-tool/scripts/ollama_stats.py'"
             echo "alias unwatch-ollama='\$HOME/.ollama-watch-tool/scripts/uninstall.sh'"

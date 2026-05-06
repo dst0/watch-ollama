@@ -185,8 +185,6 @@ The TUI is split into two panels separated by a reverse-video divider. It uses *
 Use the interactive tool to create custom Modelfiles from your GGUF models:
 ```bash
 make-modelfile
-# Or, if alias not set:
-python3 ~/.ollama-watch-tool/scripts/make-modelfile.py
 ```
 Scans `~/models` and the current directory for `.gguf` files, prompts for context length and an optional system prompt, and writes a ready-to-use `Modelfile-<name>`.
 
