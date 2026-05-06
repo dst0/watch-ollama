@@ -14,6 +14,7 @@ Flow:
 import curses
 import os
 import sys
+import subprocess
 
 # ── Preset option lists ────────────────────────────────────────────────────────
 CTX_OPTIONS = ["2048", "4096", "8192", "16384", "32768", "65536", "131072"]
@@ -414,35 +415,75 @@ def _run(stdscr):
                 fh.write("\n".join(lines) + "\n")
             generated.append(fname)
     
-    # ── Step 8b: attempt symlinking ──────────────────────────────────────────
-    # Default Ollama manifest path
-    manifest_dir = "/usr/share/ollama/.ollama/models/manifests/registry.ollama.ai/library/"
-    model_dir = os.path.join(manifest_dir, model_name.lower())
-    
-    # Check if we can write here
-    try:
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir, exist_ok=True)
-        
-        # Symlink each generated file
-        for fname in generated:
-            target = os.path.join(model_dir, "latest")
-            # Note: Ollama usually expects a json manifest, raw Modelfile won't work directly 
-            # if we just link. The user needs to 'ollama create' it. 
-            # So we inform the user to run 'ollama create'.
-            pass
-    except Exception as e:
-        pass
-
     # ── Step 9: summary ───────────────────────────────────────────────────────
     curses.curs_set(0)
     stdscr.erase()
     _draw_title(stdscr, f"Generated {len(generated)} Modelfile(s):")
     for i, fname in enumerate(generated):
         _safe_addstr(stdscr, i + 2, 2, fname, curses.A_BOLD)
-    _safe_addstr(stdscr, len(generated) + 3, 0, "To import, run:")
-    _safe_addstr(stdscr, len(generated) + 4, 2, f"ollama create {model_name} -f <Modelfile>", curses.color_pair(1))
-    _safe_addstr(stdscr, len(generated) + 6, 0, "Press any key to exit.")
+    
+    y_off = len(generated) + 4
+    _safe_addstr(stdscr, y_off,     0, "Next step: Import these models into Ollama.")
+    _safe_addstr(stdscr, y_off + 1, 2, "This will run 'ollama create' for each file.", curses.A_DIM)
+    _safe_addstr(stdscr, y_off + 3, 0, "Press Enter to begin import, or Esc to exit.")
+    stdscr.refresh()
+    
+    while True:
+        key = stdscr.getch()
+        if key in (10, 13, curses.KEY_ENTER):
+            break
+        if key in (27, ord('q'), ord('Q')):
+            return
+
+    # ── Step 10: Import execution ─────────────────────────────────────────────
+    stdscr.erase()
+    _draw_title(stdscr, "Importing models to Ollama...")
+    _safe_addstr(stdscr, 1, 0, "Please wait, this may take a moment per model.", curses.A_DIM)
+    stdscr.refresh()
+    
+    # Try to find OLLAMA_HOST from ollama.conf if it exists near the script
+    env = os.environ.copy()
+    conf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ollama.conf")
+    if os.path.exists(conf_path):
+        try:
+            with open(conf_path, "r") as f:
+                for line in f:
+                    if line.startswith("OLLAMA_HOST="):
+                        env["OLLAMA_HOST"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+        except:
+            pass
+
+    for i, fname in enumerate(generated):
+        max_y, max_x = stdscr.getmaxyx()
+        if multi_variant:
+            o_name = fname.replace("Modelfile-", "")
+        else:
+            o_name = model_name
+
+        _safe_addstr(stdscr, i + 3, 2, f"Creating {o_name}...", curses.A_DIM)
+        stdscr.refresh()
+        
+        try:
+            res = subprocess.run(["ollama", "create", o_name, "-f", fname], 
+                                 capture_output=True, text=True, env=env)
+            
+            # Clear the "Creating..." line
+            stdscr.move(i + 3, 0)
+            stdscr.clrtoeol()
+            
+            if res.returncode == 0:
+                _safe_addstr(stdscr, i + 3, 2, f"\u2713 {o_name}", curses.color_pair(2))
+            else:
+                _safe_addstr(stdscr, i + 3, 2, f"\u2717 {o_name} (failed)", curses.color_pair(3))
+                # Show error message on next line
+                err_msg = res.stderr.strip().split('\n')[-1]
+                _safe_addstr(stdscr, i + 4, 4, err_msg[:max_x-6], curses.A_DIM)
+        except Exception as e:
+            _safe_addstr(stdscr, i + 3, 2, f"\u2717 {o_name} (error: {str(e)})", curses.color_pair(3))
+        
+        stdscr.refresh()
+
+    _safe_addstr(i + 6, 0, "All tasks complete. Press any key to exit.")
     stdscr.refresh()
     stdscr.getch()
 
