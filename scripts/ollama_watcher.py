@@ -103,7 +103,7 @@ def main():
                     time.sleep(1)
                     f = open(RAW_LOG, "r", errors="replace")
                 else:
-                    time.sleep(0.05)
+                    time.sleep(0.25)
                 continue
             
             # --- PARSE LOG METRICS ---

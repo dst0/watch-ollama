@@ -4,11 +4,13 @@ import subprocess
 import time
 import threading
 import os
+import select
 import pathlib
 from collections import deque
 import urllib.request
 import json
 import re
+import sys
 
 # Resolve paths relative to this script so the tool works for any user/install location
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
@@ -144,7 +146,6 @@ def get_system_temps():
     max_sys_temp = 0.0
     try:
         output = subprocess.check_output(["sensors", "-j"], text=True, errors="replace", stderr=subprocess.DEVNULL)
-        import json
         data = json.loads(output)
         for adapter, sensors_dict in data.items():
             if adapter == "Adapter": continue
@@ -201,9 +202,11 @@ def detect_gpu_tool():
 
 # Fallback to installed location if running from dev and log not found
 
-log_lines = deque(maxlen=100000)
+LOG_HISTORY_MAXLEN = 20000  # retained log lines; lower than original 100000 to cut rebuild cost
+log_lines = deque(maxlen=LOG_HISTORY_MAXLEN)
 log_lines_total_count = 0
 smi_text = ["Loading GPU status..."]
+latest_cpu_temp = 0.0
 error_messages = {}
 log_lock = threading.Lock()
 smi_lock = threading.Lock()
@@ -213,6 +216,23 @@ smi_ready = threading.Event()
 smi_poll_trigger = threading.Event()
 _tail_proc = None  # module-level reference so we can terminate on exit
 last_log_update = time.time()
+
+# ── Optimisation state ────────────────────────────────────────────────────────
+# Monotonic version counters; incremented by background threads so the main
+# loop can detect changes without expensive content comparisons.
+log_version = 0          # bumped inside log_lock whenever log_lines is updated
+smi_version = 0          # bumped inside smi_lock whenever smi_text is updated
+
+# Event set by background threads to wake the main-loop idle wait.
+render_event = threading.Event()
+
+# Wrap-line cache for build_visible_log_lines(); keyed by (width, log_version).
+_visible_log_cache = None
+_visible_log_cache_key = None
+
+# Per-model /api/show param cache: model_name -> (fetch_timestamp, params_str)
+_model_params_cache: dict = {}
+MODEL_PARAMS_CACHE_TTL = 30.0  # seconds between /api/show refreshes per model
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
 LITERAL_ANSI_ESCAPE_RE = re.compile(r"\\033(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\\033\\)|[ -/]*[@-~])")
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -226,6 +246,14 @@ ansi_color_pairs = {}
 next_ansi_color_pair = 20
 SCROLL_LINE_STEP = 3
 STARTUP_LOGO_SECONDS = 2.0
+# Idle-wait timeouts for the main loop's event-driven render cycle.
+# A shorter wait is used immediately after the user interacted so key-repeat
+# bursts are picked up promptly; a longer wait is used when truly idle.
+IDLE_WAIT_AFTER_INPUT = 0.04   # seconds – ~25 fps ceiling when scrolling
+IDLE_WAIT_DEFAULT     = 0.15   # seconds – ~7 fps ceiling when nothing changes
+# Number of render frames during which the SMI-panel height reservation is
+# cleared after a panel toggle so the layout can shrink to fit.
+SMI_RESET_FRAMES = 10
 
 def sanitize_render_text(text):
     text = ANSI_ESCAPE_RE.sub("", text)
@@ -364,14 +392,36 @@ def render_ansi_line(stdscr, y, x, line, max_width):
             pass
 
 def build_visible_log_lines(width):
+    """Return (visible_lines, log_snapshot, total_count).
+
+    The result is cached by (width, log_version) so the expensive per-line
+    wrap is only recomputed when the terminal width changes or new log data
+    has arrived.  The cache is written and read exclusively from the main
+    thread, so no additional locking is required for the cache variables.
+
+    The log_version is read inside log_lock (the only way to get a consistent
+    value), but on a cache hit we return immediately after releasing the lock
+    without copying the deque.
+    """
+    global _visible_log_cache, _visible_log_cache_key
+    # Fast path: check under the lock but avoid copying the deque when cached.
     with log_lock:
+        curr_version = log_version
+        cache_key = (width, curr_version)
+        if _visible_log_cache_key == cache_key and _visible_log_cache is not None:
+            return _visible_log_cache
+        # Cache miss: take a snapshot while we still hold the lock.
         log_snapshot = list(log_lines)
         total_count = log_lines_total_count
+    # Build wrapped lines outside the lock — this is the expensive part.
     visible = []
     for idx, line in enumerate(log_snapshot):
         for segment in wrap_render_line(line, width):
             visible.append((idx, segment))
-    return visible, log_snapshot, total_count
+    result = (visible, log_snapshot, total_count)
+    _visible_log_cache = result
+    _visible_log_cache_key = cache_key
+    return result
 
 def collect_input(stdscr):
     keys = []
@@ -467,6 +517,10 @@ def set_error(key, message):
             error_messages[key] = sanitize_render_text(message)
         else:
             error_messages.pop(key, None)
+    # Wake the main loop so the error banner updates immediately.
+    # Called outside error_lock to keep the call site simple; render_event
+    # is thread-safe and never acquired together with any other lock.
+    render_event.set()
 
 def get_val_color(val, t1, t2, t3, t4, color_pair_func=curses.color_pair):
     if val < t1:
@@ -494,15 +548,17 @@ def toggle_gpu_tool():
     return new_tool
 
 def set_smi_text(lines, cpu_temp=0.0):
-    global smi_text, latest_cpu_temp
+    global smi_text, latest_cpu_temp, smi_version
     with smi_lock:
         smi_text = lines
         latest_cpu_temp = cpu_temp
+        smi_version += 1
     smi_ready.set()
+    render_event.set()  # wake main-loop idle wait
 
 def get_smi_snapshot():
     with smi_lock:
-        return list(smi_text), latest_cpu_temp
+        return list(smi_text), latest_cpu_temp, smi_version
 
 def poll_smi():
     while True:
@@ -570,6 +626,11 @@ def poll_smi():
                 data = json.loads(response.read().decode())
                 models = data.get("models", [])
                 if models:
+                    current_model_names = {m.get("name", "") for m in models}
+                    # Evict cache entries for models no longer active
+                    stale = [k for k in _model_params_cache if k not in current_model_names]
+                    for k in stale:
+                        del _model_params_cache[k]
                     for m in models:
                         name = m.get("name", "unknown")
                         ctx = m.get("context_length", 0)
@@ -619,7 +680,7 @@ def poll_smi():
             full_smi_lines.extend(hw_lines)
             
         set_smi_text(full_smi_lines, cpu_temp=cpu_temp)
-        smi_poll_trigger.wait(timeout=0.5)
+        smi_poll_trigger.wait(timeout=2.0)
         smi_poll_trigger.clear()
 
 def get_error_lines(width):
@@ -662,7 +723,7 @@ def tail_log():
                 
                 parts = text.split('\n')
                 with log_lock:
-                    global log_lines_total_count
+                    global log_lines_total_count, log_version
                     if len(parts) == 1:
                         current_line += parts[0]
                         if log_lines:
@@ -685,6 +746,11 @@ def tail_log():
                         current_line = parts[-1]
                         log_lines.append(current_line.replace('\t', '    '))
                         log_lines_total_count += 1
+                    log_version += 1  # signal cache invalidation
+                # Wake the main loop. Called outside log_lock intentionally —
+                # holding a lock across render_event.set() is unnecessary and
+                # would create an avoidable lock ordering risk.
+                render_event.set()
             else:
                 if p.poll() is not None:
                     error = ""
@@ -695,7 +761,15 @@ def tail_log():
                             error = ""
                     set_error("log", error or "Log tail stopped")
                     return
-                time.sleep(0.05)
+                # Block up to 0.25 s waiting for the tail process to write
+                # more data; this replaces the original busy-sleep(0.05).
+                # select.select() is called outside log_lock to avoid holding
+                # the lock across a blocking call.
+                try:
+                    select.select([p.stdout], [], [], 0.25)
+                except (ValueError, OSError):
+                    set_error("log", "Log tail interrupted")
+                    return
     except Exception as e:
         set_error("log", f"Log tail error: {e}")
         log_ready.set()
@@ -758,7 +832,18 @@ def parse_ollama_ps():
     return result
 
 def _get_model_params(model_name):
-    """Fetch model parameters from /api/show and return a formatted string."""
+    """Fetch model parameters from /api/show and return a formatted string.
+
+    Results are cached per model name for MODEL_PARAMS_CACHE_TTL seconds so
+    the expensive HTTP call is not repeated on every telemetry cycle.
+    """
+    now = time.time()
+    cached = _model_params_cache.get(model_name)
+    if cached is not None:
+        fetch_ts, params_str = cached
+        if now - fetch_ts < MODEL_PARAMS_CACHE_TTL:
+            return params_str
+
     params_of_interest = [
         "temperature", "num_batch", "num_gqa",
         "top_k", "top_p", "tfs_z"
@@ -771,6 +856,7 @@ def _get_model_params(model_name):
             data = json.loads(response.read().decode())
             param_str = data.get("parameters", "")
             if not param_str:
+                _model_params_cache[model_name] = (now, "")
                 return ""
             
             params = {}
@@ -786,9 +872,12 @@ def _get_model_params(model_name):
                     short_name = p.replace("temperature", "temp").replace("num_", "")
                     param_list.append(f"{short_name}:{params[p]}")
             
-            return " | " + " ".join(param_list)
+            result = (" | " + " ".join(param_list)) if param_list else ""
+            _model_params_cache[model_name] = (now, result)
+            return result
 
     except Exception:
+        _model_params_cache[model_name] = (now, "")
         return ""
 
 def main(stdscr):
@@ -804,7 +893,7 @@ def main(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(1)
     stdscr.keypad(True)
-    stdscr.timeout(16)
+    stdscr.timeout(0)  # non-blocking getch(); timing is handled by render_event.wait()
     
     # Enable mouse events for scrolling
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
@@ -864,17 +953,78 @@ def main(stdscr):
     last_snapshot_len = 0
     smi_reset_counter = 0
 
-    while True:
-        max_y, max_x = stdscr.getmaxyx()
-        smi_snapshot, cpu_temp = get_smi_snapshot()
+    # ── Dirty-redraw tracking ────────────────────────────────────────────────
+    # We only call stdscr.erase()/refresh() when something actually changed.
+    render_dirty = True      # force first render
+    last_term_size = (-1, -1)
+    last_smi_ver = -1
+    last_log_ver = -1
+    last_error_sig: tuple = ()
+    last_scroll = -1
+    last_auto = None
+    visible_log_lines: list = []
+    log_snapshot: list = []
+    input_was_active = False  # used to shorten the idle wait after keypresses
 
-        # Keep the top telemetry panel from jumping when Ollama briefly changes
-        # model/prompt rows. Reset the reservation only when the terminal height changes
-        # or when panels are toggled (cleared in the input loop).
+    while True:
+        # ── IDLE WAIT ────────────────────────────────────────────────────
+        # When nothing is dirty, block until a background thread signals
+        # new data or a short timeout elapses so we catch terminal resizes
+        # and key-repeat bursts promptly.
+        if not render_dirty:
+            wait_s = IDLE_WAIT_AFTER_INPUT if input_was_active else IDLE_WAIT_DEFAULT
+            render_event.wait(timeout=wait_s)
+            render_event.clear()
+
+        # ── INPUT (non-blocking drain) ───────────────────────────────────
+        # Drain all queued keys each iteration so held scroll keys do not
+        # create a backlog that blocks a direction change.
+        keys = collect_input(stdscr)
+        if any(key == 3 or key == ord('q') or key == ord('Q') or key == 27 for key in keys):
+            break
+
+        # ── STATE SNAPSHOT ───────────────────────────────────────────────
+        max_y, max_x = stdscr.getmaxyx()
+        curr_term_size = (max_y, max_x)
+        smi_snapshot, cpu_temp, curr_smi_ver = get_smi_snapshot()
+        render_width = max(1, max_x - 1)
+        active_errors = get_error_lines(render_width)
+        curr_error_sig = tuple(active_errors)
+        with log_lock:
+            curr_log_ver = log_version
+
+        # Apply input using the cached visible line count.  The scroll
+        # position will be re-clamped accurately after we rebuild log lines.
+        approx_smi_h = min(max(1, max_y // 2), max(1, len(smi_snapshot)))
+        approx_err_h = min(2, len(active_errors))
+        approx_log_h = max(1, max_y - approx_smi_h - approx_err_h - 2)
+        scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
+            keys, scroll_pos, auto_scroll, len(visible_log_lines), approx_log_h
+        )
+        if smi_changed:
+            smi_reset_counter = SMI_RESET_FRAMES  # clear reservations to allow panel to shrink
+        input_was_active = bool(input_changed)
+
+        # ── DIRTY CHECK ──────────────────────────────────────────────────
+        if (input_changed
+                or curr_term_size != last_term_size
+                or curr_smi_ver != last_smi_ver
+                or curr_log_ver != last_log_ver
+                or curr_error_sig != last_error_sig
+                or scroll_pos != last_scroll
+                or auto_scroll != last_auto):
+            render_dirty = True
+
+        if not render_dirty:
+            continue
+
+        # ── LAYOUT ───────────────────────────────────────────────────────
         max_smi_lines = max(1, max_y // 2)
         observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
-        
-        # If the snapshot length changed (e.g. models added/removed), we allow resizing
+
+        # Keep the top telemetry panel from jumping when Ollama briefly
+        # changes model/prompt rows.  Reset only on terminal height change
+        # or panel toggle (smi_reset_counter set in apply_input).
         if len(smi_snapshot) != last_snapshot_len:
             reserved_smi_lines_by_height.clear()
             last_snapshot_len = len(smi_snapshot)
@@ -882,41 +1032,36 @@ def main(stdscr):
         if smi_reset_counter > 0:
             reserved_smi_lines_by_height.clear()
             smi_reset_counter -= 1
-            
+
         reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
         smi_lines = min(max_smi_lines, max(reserved_smi_lines, observed_smi_lines))
         reserved_smi_lines_by_height[max_y] = smi_lines
-            
-        render_width = max(1, max_x - 1)
-        active_errors = get_error_lines(render_width)
+
+        error_h = min(2, len(active_errors))
         if active_errors:
             try:
                 with open(DEBUG_LOG, "a") as f_debug:
                     f_debug.write(f"{time.strftime('%H:%M:%S')} Active Errors: {active_errors}\n")
             except Exception:
                 pass
-        error_h = min(2, len(active_errors))
 
         log_h = max_y - smi_lines - error_h - 2
         if log_h < 1:
-            log_h = 1 # Prevent crash on tiny terminal
+            log_h = 1  # Prevent crash on tiny terminal
 
+        # ── LOG LINES (cached) ───────────────────────────────────────────
         visible_log_lines, log_snapshot, total_count = build_visible_log_lines(render_width)
 
-        # Drain all queued keys each frame so held scroll keys do not create a
-        # backlog that blocks a direction change.
-        keys = collect_input(stdscr)
-        if any(key == 3 or key == ord('q') or key == ord('Q') or key == 27 for key in keys):
-            break
-        scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
-            keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
-        )
-        
-        if smi_changed:
-            smi_reset_counter = 10 # Clear reservations for several frames to allow shrinking
-            
+        # Re-clamp scroll with the accurate wrapped-line count.
+        max_scroll = max(0, len(visible_log_lines) - log_h)
+        if auto_scroll:
+            scroll_pos = max_scroll
+        else:
+            scroll_pos = min(max(0, scroll_pos), max_scroll)
+
+        # ── RENDER ───────────────────────────────────────────────────────
         stdscr.erase()
-        
+
         # Render SMI
         for i in range(smi_lines):
             line = smi_snapshot[i] if i < len(smi_snapshot) else ""
@@ -1075,17 +1220,19 @@ def main(stdscr):
             
             log_active = (time.time() - last_log_update < 2.0)
             log_text = " output" if log_active else " idle"
-            import sys
             sys.stdout.write(f"\033]0;👀 Watch Ollama {t_mark}{e_part}{log_text}\007")
             sys.stdout.flush()
 
         stdscr.refresh()
-        if not input_changed:
-            time.sleep(0.02)
-        
-        stdscr.refresh()
-        if not input_changed:
-            time.sleep(0.02)
+
+        # ── UPDATE TRACKING ──────────────────────────────────────────────
+        last_term_size = curr_term_size
+        last_smi_ver = curr_smi_ver
+        last_log_ver = curr_log_ver
+        last_error_sig = curr_error_sig
+        last_scroll = scroll_pos
+        last_auto = auto_scroll
+        render_dirty = False
 
 if __name__ == "__main__":
     import sys
