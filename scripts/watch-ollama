@@ -221,7 +221,7 @@ ROLE_MARKERS = {
 }
 ANSI_TOKEN_RE = re.compile(r"(?:\x1b|\\033)\[([0-9;]*)m")
 ansi_color_pairs = {}
-next_ansi_color_pair = 10
+next_ansi_color_pair = 20
 SCROLL_LINE_STEP = 3
 STARTUP_LOGO_SECONDS = 2.0
 

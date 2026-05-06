@@ -69,5 +69,11 @@ class StatusRenderingTests(unittest.TestCase):
         temp = TUI.get_cpu_temp()
         self.assertEqual(temp, 55.0)
 
+    def test_ansi_color_pair_start_does_not_overwrite_static_pairs(self):
+        # Pre-allocated curses pairs used by get_val_color / get_temp_color are
+        # 1..6 and 11. The ANSI dynamic allocator must start above 11 so it
+        # never overwrites the RED pair (11) used for hot temperatures.
+        self.assertGreater(TUI.next_ansi_color_pair, 11)
+
 if __name__ == "__main__":
     unittest.main()
