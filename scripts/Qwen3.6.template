@@ -60,6 +60,7 @@ Tool rules:
 <tool_response>
 {{ .Content }}
 </tool_response><|im_end|>
+Use the tool response above to continue answering the original user request.<|im_end|>
 {{- end }}
 {{- end }}<|im_start|>assistant
 """
