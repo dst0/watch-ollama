@@ -14,7 +14,7 @@ OLLAMA_CONF="$INSTALL_DIR/ollama.conf"
 
 DEFAULT_HOST="0.0.0.0"
 DEFAULT_PORT="11435"
-DEFAULT_KEEP_ALIVE="1m"
+DEFAULT_KEEP_ALIVE="3m"
 
 # Accept positional args or prompt interactively
 if [ -n "$1" ]; then
@@ -56,6 +56,10 @@ printf "[Service]\nEnvironment=\"OLLAMA_KEEP_ALIVE=%s\"\n" "$OLLAMA_KEEP_ALIVE_V
 LOGGING_CONFIG="$OLLAMA_SERVICE_DIR/30-logging.conf"
 echo "Configuring Ollama logging to /var/log/ollama.log..."
 printf "[Service]\nEnvironment=\"OLLAMA_DEBUG=2\"\nStandardOutput=append:/var/log/ollama.log\nStandardError=append:/var/log/ollama.log\n" | sudo tee "$LOGGING_CONFIG" > /dev/null
+
+CPU_LIMIT_CONFIG="$OLLAMA_SERVICE_DIR/40-cpu-limit.conf"
+echo "Configuring CPU Limit to 400%..."
+printf "[Service]\nCPUQuota=400%%\n" | sudo tee "$CPU_LIMIT_CONFIG" > /dev/null
 
 # Persist the URL so other tools (e.g. watch-ollama) can read it
 printf "OLLAMA_HOST=%s\n" "$FULL_ADDR" > "$OLLAMA_CONF"
