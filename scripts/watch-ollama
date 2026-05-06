@@ -209,6 +209,7 @@ smi_lock = threading.Lock()
 error_lock = threading.Lock()
 log_ready = threading.Event()
 smi_ready = threading.Event()
+smi_poll_trigger = threading.Event()
 _tail_proc = None  # module-level reference so we can terminate on exit
 last_log_update = time.time()
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[@-~])")
@@ -382,6 +383,7 @@ def collect_input(stdscr):
 def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
     max_scroll = max(0, log_line_count - log_h)
     changed = False
+    smi_changed = False
 
     if keys:
         for key in keys:
@@ -415,9 +417,13 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
             elif key == ord('g') or key == ord('G'):
                 save_setting("show_gpu", not SETTINGS["show_gpu"])
                 changed = True
+                smi_changed = True
+                smi_poll_trigger.set()
             elif key == ord('c') or key == ord('C'):
                 save_setting("show_cpu", not SETTINGS["show_cpu"])
                 changed = True
+                smi_changed = True
+                smi_poll_trigger.set()
             elif key == ord('l') or key == ord('L'):
                 save_setting("show_log", not SETTINGS["show_log"])
                 changed = True
@@ -427,6 +433,8 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
             elif key == ord('t') or key == ord('T'):
                 toggle_gpu_tool()
                 changed = True
+                smi_changed = True
+                smi_poll_trigger.set()
             elif key == curses.KEY_MOUSE:
                 try:
                     _, _, _, _, bstate = curses.getmouse()
@@ -450,7 +458,7 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
     else:
         scroll_pos = min(max(0, scroll_pos), max_scroll)
 
-    return scroll_pos, auto_scroll, changed
+    return scroll_pos, auto_scroll, changed, smi_changed
 
 def set_error(key, message):
     with error_lock:
@@ -610,7 +618,8 @@ def poll_smi():
             full_smi_lines.extend(hw_lines)
             
         set_smi_text(full_smi_lines, cpu_temp=cpu_temp)
-        time.sleep(0.5)
+        smi_poll_trigger.wait(timeout=0.5)
+        smi_poll_trigger.clear()
 
 def get_error_lines(width):
     with error_lock:
@@ -851,23 +860,31 @@ def main(stdscr):
     scroll_pos = 0
     auto_scroll = True
     reserved_smi_lines_by_height = {}
+    last_snapshot_len = 0
+    smi_reset_counter = 0
 
     while True:
         max_y, max_x = stdscr.getmaxyx()
         smi_snapshot, cpu_temp = get_smi_snapshot()
 
         # Keep the top telemetry panel from jumping when Ollama briefly changes
-        # model/prompt rows. Reset the reservation only when the terminal height changes.
+        # model/prompt rows. Reset the reservation only when the terminal height changes
+        # or when panels are toggled (cleared in the input loop).
         max_smi_lines = max(1, max_y // 2)
         observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
         
-        # If panels are hidden, we don't want to reserve space for them
-        if not SETTINGS["show_cpu"] and not SETTINGS["show_gpu"]:
-            smi_lines = observed_smi_lines
-        else:
-            reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
-            smi_lines = min(max_smi_lines, max(reserved_smi_lines, observed_smi_lines))
-            reserved_smi_lines_by_height[max_y] = smi_lines
+        # If the snapshot length changed (e.g. models added/removed), we allow resizing
+        if len(smi_snapshot) != last_snapshot_len:
+            reserved_smi_lines_by_height.clear()
+            last_snapshot_len = len(smi_snapshot)
+
+        if smi_reset_counter > 0:
+            reserved_smi_lines_by_height.clear()
+            smi_reset_counter -= 1
+            
+        reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
+        smi_lines = min(max_smi_lines, max(reserved_smi_lines, observed_smi_lines))
+        reserved_smi_lines_by_height[max_y] = smi_lines
             
         render_width = max(1, max_x - 1)
         active_errors = get_error_lines(render_width)
@@ -884,9 +901,12 @@ def main(stdscr):
         keys = collect_input(stdscr)
         if any(key == 3 or key == ord('q') or key == ord('Q') or key == 27 for key in keys):
             break
-        scroll_pos, auto_scroll, input_changed = apply_input(
+        scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
             keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
         )
+        
+        if smi_changed:
+            smi_reset_counter = 10 # Clear reservations for several frames to allow shrinking
             
         stdscr.erase()
         

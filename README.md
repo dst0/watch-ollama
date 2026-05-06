@@ -117,11 +117,11 @@ Run the TUI for real-time monitoring:
 watch-ollama
 ```
 
-The TUI is split into two panels separated by a reverse-video divider:
+The TUI is split into two panels separated by a reverse-video divider. It features high-responsiveness polling: UI layout and telemetry data refresh instantly when toggling panels or switching tools.
 
 | Panel | Contents |
 |-------|----------|
-| **Top — Telemetry** | Ollama header, active models with VRAM/ctx, CPU load & temperature, RAM usage, GPU temperature (when nvidia-smi/amd-smi is present), extra sensor readings |
+| **Top — Telemetry** | Ollama header, active models with VRAM/ctx, CPU load & temperature, RAM usage, GPU temperature (when nvidia-smi/amd-smi is present), extra sensor readings. Dynamic height adjustment prevents "jitter" while maintaining a stable view. |
 | **Bottom — Log** | Scrollable view of `ollama_readable.log` with color-coded roles, thought blocks, and generation metrics |
 
 #### Keyboard & Mouse shortcuts
