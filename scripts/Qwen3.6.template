@@ -1,102 +1,12 @@
-TEMPLATE """
-{{- $lastUserIdx := -1 -}}
-{{- range $idx, $msg := .Messages -}}
-{{- if eq $msg.Role "user" }}{{ $lastUserIdx = $idx }}{{- end -}}
-{{- end -}}
-{{- if or .System .Tools }}<|im_start|>system
-{{- if .System }}
+TEMPLATE {{ .Prompt }}
+RENDERER qwen3.6
+PARSER qwen3.6
 
-{{ .System }}
-{{- end }}
-{{- if .Tools }}
-
-# Tools
-
-You may call one or more functions to assist with the user query.
-
-Use tools when the task requires inspecting files, reading project state, running shell commands, modifying code, searching, testing, or performing an external action.
-
-You are provided with function signatures within <tools></tools> XML tags.
-
-Valid function names:
-{{- range .Tools }}
-- {{ .Function.Name }}
-{{- end }}
-
-Function signatures:
-<tools>
-{{- range .Tools }}
-{"type": "function", "function": {{ .Function }}}
-{{- end }}
-</tools>
-
-For each function call, return a JSON object with function name and arguments inside <tool_call></tool_call> XML tags.
-
-Required function-call format:
-<tool_call>
-{"name": "<function-name>", "arguments": <args-json-object>}
-</tool_call>
-
-Function-call rules:
-- Use exactly one function call when a tool is needed.
-- Output only the <tool_call> block when calling a tool.
-- Do not include explanations before or after a function call.
-- Do not output Markdown fences.
-- Do not output prose such as "Let me try", "I will call", or "Looking at the tool".
-- Do not discuss the tool schema.
-- Do not put tool calls inside <think> blocks.
-- The "name" field MUST exactly match one valid function name listed above.
-- The "name" field MUST NOT be empty.
-- The "name" field MUST NOT be "function_name".
-- The "name" field MUST NOT be "tool_name".
-- The "arguments" field MUST be a valid JSON object.
-- Do not wrap "arguments" as a string.
-- Do not invent tools, arguments, or schemas.
-- For shell commands, use the correct command argument from the tool schema.
-- If no tool is needed, answer normally.
-{{- end }}<|im_end|>
-{{ end }}
-{{- range $i, $msg := .Messages }}
-{{- $last := eq (len (slice $.Messages $i)) 1 -}}
-{{- if eq $msg.Role "user" }}<|im_start|>user
-{{ $msg.Content }}<|im_end|>
-{{- else if eq $msg.Role "assistant" }}<|im_start|>assistant
-{{- if and $.IsThinkSet $.Think $msg.Thinking }}
-<think>
-{{ $msg.Thinking }}
-</think>
-{{- end }}
-{{- if $msg.Content }}
-{{ $msg.Content }}
-{{- end }}
-{{- if $msg.ToolCalls }}
-{{- range $msg.ToolCalls }}
-<tool_call>
-{"name": "{{ .Function.Name }}", "arguments": {{ .Function.Arguments }}}
-</tool_call>
-{{- end }}
-{{- end }}{{ if not $last }}<|im_end|>
-{{ end }}
-{{- else if eq $msg.Role "tool" }}<|im_start|>user
-<tool_response>
-{{ $msg.Content }}
-</tool_response>
-Use the tool response above to continue the original task. If another tool is needed, output exactly one valid <tool_call> block. Otherwise answer normally.<|im_end|>
-{{- end }}
-{{- if and (ne $msg.Role "assistant") $last }}<|im_start|>assistant
-{{- if and $.IsThinkSet $.Think }}
-<think>
-{{- else if or (and $.IsThinkSet (not $.Think)) (and $.Tools (not $.IsThinkSet)) }}
-<think>
-</think>
-{{- end }}
-{{- end }}
-{{- end }}
-"""
+PARAMETER presence_penalty 1.5
+PARAMETER temperature 1
+PARAMETER top_k 20
+PARAMETER top_p 0.95
 PARAMETER num_thread 4
-PARAMETER num_batch 1024
-PARAMETER num_ctx 32768
+PARAMETER num_batch {num_batch}
+PARAMETER num_ctx {num_ctx}
 PARAMETER num_predict -1
-PARAMETER stop "<|im_start|>"
-PARAMETER stop "<|im_end|>"
-PARAMETER stop "<|endoftext|>"
