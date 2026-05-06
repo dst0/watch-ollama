@@ -182,11 +182,11 @@ The TUI is split into two panels separated by a reverse-video divider. It uses *
 - **Terminal title** — dynamically updated with a colored square (🟦🟩🟨🟧🟥) to reflect system heat at a glance.
 
 ### Generating Modelfiles — `make-modelfile`
-Use the interactive tool to create custom Modelfiles from your GGUF models:
+Use the interactive tool to create and register custom Modelfiles from your GGUF models:
 ```bash
 make-modelfile
 ```
-Scans `~/models` and the current directory for `.gguf` files, prompts for context length and an optional system prompt, and writes a ready-to-use `Modelfile-<name>`.
+Scans `~/models` and the current directory for `.gguf` files, prompts for context length and an optional system prompt, and generates ready-to-use `Modelfile` variants. After generation, the tool offers to **automatically import** the models into Ollama and **restart the services** for you, handling naming, registration, and activation in one step.
 
 ### Switching GPU Backends — `switch-gpu`
 Toggles Ollama between the ROCm and Vulkan backends by writing a systemd drop-in and restarting the service:

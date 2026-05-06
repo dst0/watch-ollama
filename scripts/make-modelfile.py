@@ -10,6 +10,8 @@ Flow:
   5. Batch-size multi-select      (left/right + space/A/N)
   6. Optional system prompt
   7. Generates one Modelfile per (ctx × batch) combination
+  8. Interactive Ollama import (ollama create)
+  9. Restart services
 """
 import curses
 import os
@@ -501,6 +503,17 @@ def _run(stdscr):
     stdscr.clrtoeol()
     _draw_title(stdscr, "Ollama import complete")
     _safe_addstr(stdscr, 1, 0, "All selected models have been processed.", curses.A_DIM)
+
+    # ── Step 11: Restart services ─────────────────────────────────────────────
+    _safe_addstr(stdscr, max_y - 3, 0, "Restarting Ollama services...", curses.A_DIM)
+    stdscr.refresh()
+    try:
+        # Run restart in background, suppress output but wait for completion
+        subprocess.run(["sudo", "systemctl", "restart", "ollama", "ollama-watcher", "--no-pager"], 
+                       capture_output=True, check=False)
+        _safe_addstr(stdscr, max_y - 3, 0, "\u2713 Services restarted.          ", curses.color_pair(2))
+    except Exception as e:
+        _safe_addstr(stdscr, max_y - 3, 0, f"\u2717 Service restart failed: {str(e)}", curses.color_pair(3))
 
     _safe_addstr(stdscr, max_y - 1, 0, "All tasks complete. Press any key to exit.")
     stdscr.refresh()
