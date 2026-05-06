@@ -15,6 +15,7 @@ SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 HEADER_FILE = SCRIPTS_DIR / "header.txt"
 OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
 READABLE_LOG = str(SCRIPTS_DIR.parent / "ollama_readable.log")
+DEBUG_LOG = str(SCRIPTS_DIR.parent / "watch-ollama-debug.log")
 
 SETTINGS = {
     "gpu_tool": "auto",
@@ -890,7 +891,7 @@ def main(stdscr):
         active_errors = get_error_lines(render_width)
         if active_errors:
             try:
-                with open("/tmp/watch-ollama-debug.log", "a") as f_debug:
+                with open(DEBUG_LOG, "a") as f_debug:
                     f_debug.write(f"{time.strftime('%H:%M:%S')} Active Errors: {active_errors}\n")
             except Exception:
                 pass
