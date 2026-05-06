@@ -16,8 +16,8 @@ import os
 import sys
 
 # ── Preset option lists ────────────────────────────────────────────────────────
-CTX_OPTIONS   = ["2048", "4096", "8192", "16384", "32768", "65536", "131072"]
-BATCH_OPTIONS = ["128",  "256",  "512",  "1024",  "2048"]
+CTX_OPTIONS = ["2048", "4096", "8192", "16384", "32768", "65536", "131072"]
+BATCH_OPTIONS = ["128", "256", "512", "1024", "2048"]
 
 # Number of GGUF results shown at one time (exclusive of ..more indicators)
 MAX_VISIBLE_FILES = 5

@@ -268,20 +268,17 @@ class TestMultiSelectLogic(unittest.TestCase):
     def test_a_key_does_not_produce_literal_a_in_output(self):
         """A must select all options, not append the character 'a'."""
         result, _ = self._apply(["A", "<enter>"])
+        # All CTX_OPTIONS are purely numeric strings.
         for item in result:
-            self.assertNotIn("a", item.lower().replace("2", "").replace("4", "")
-                             .replace("8", "").replace("1", "").replace("0", "")
-                             .replace("3", "").replace("6", "").replace("5", "")
-                             .replace("7", "").replace("9", ""))
-        # All presets are numeric strings → none should contain 'a'
+            self.assertTrue(item.isdigit(), f"Expected numeric option, got: {item!r}")
         self.assertEqual(sorted(result, key=int), sorted(self.OPTIONS, key=int))
 
     def test_n_key_does_not_produce_literal_n_in_output(self):
         """N must deselect all, not append the character 'n'."""
-        # select something first then press N; enter gives cursor item (a number)
+        # Select everything then press N; Enter returns the cursor item (a number).
         result, _ = self._apply(["A", "N", "<enter>"])
         self.assertEqual(len(result), 1)
-        self.assertTrue(result[0].isdigit() or result[0].replace("", "").isnumeric())
+        self.assertTrue(result[0].isdigit(), f"Expected numeric option, got: {result[0]!r}")
 
 
 class TestModelfileGeneration(unittest.TestCase):
