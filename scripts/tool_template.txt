@@ -1,0 +1,51 @@
+TEMPLATE """
+{{- $lastUserIdx := -1 -}}
+{{- range $idx, $msg := .Messages -}}
+{{- if eq $msg.Role "user" }}{{ $lastUserIdx = $idx }}{{ end -}}
+{{- end }}
+{{- if or .System .Tools }}<|im_start|>system
+# Tools
+You have access to the following functions:
+<tools>
+{{- range .Tools }}
+{{ .Function }}
+{{- end }}
+</tools>
+If you choose to call a function ONLY reply in the following format with NO suffix:
+<tool_call>
+<function=function_name>
+<parameter=key>
+value
+</parameter>
+</function>
+</tool_call>
+{{- if .System }}
+{{ .System }}
+{{- end }}<|im_end|>
+{{ end }}
+{{- range $i, $_ := .Messages }}
+{{- $last := eq (len (slice $.Messages $i)) 1 -}}
+{{- if eq .Role "user" }}<|im_start|>user
+{{ .Content }}<|im_end|>
+{{ else if eq .Role "assistant" }}<|im_start|>assistant
+{{ if .Content }}{{ .Content }}
+{{- else if .ToolCalls }}<tool_call>
+{{ range .ToolCalls }}
+<function={{ .Function.Name }}>
+{{ range $key, $value := .Function.Arguments }}
+<parameter={{ $key }}>
+{{ $value }}
+</parameter>
+{{ end }}
+</function>
+{{ end }}</tool_call>
+{{- end }}{{ if not $last }}<|im_end|>
+{{ end }}
+{{- else if eq .Role "tool" }}<|im_start|>user
+<tool_response>
+{{ .Content }}
+</tool_response><|im_end|>
+{{ end }}
+{{- if and (ne .Role "assistant") $last }}<|im_start|>assistant
+{{ end }}
+{{- end }}"""
