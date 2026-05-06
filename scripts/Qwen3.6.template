@@ -12,61 +12,54 @@ TEMPLATE """
 
 # Tools
 
-You have access to external tools.
+You may call one or more functions to assist with the user query.
 
-Use a tool when the user asks you to inspect files, run shell commands, modify code, test code, read project state, or perform any action outside this conversation.
+Use tools when the task requires inspecting files, reading project state, running shell commands, modifying code, searching, testing, or performing an external action.
 
-Valid tool names:
+You are provided with function signatures within <tools></tools> XML tags.
+
+Valid function names:
 {{- range .Tools }}
 - {{ .Function.Name }}
 {{- end }}
 
-Tool definitions:
+Function signatures:
 <tools>
-{{ range .Tools -}}
+{{- range .Tools }}
 {"type": "function", "function": {{ .Function }}}
-{{ end -}}
+{{- end }}
 </tools>
 
-When a tool is required, output exactly one tool call and nothing else.
+For each function call, return a JSON object with function name and arguments inside <tool_call></tool_call> XML tags.
 
-Required output format:
+Required function-call format:
 <tool_call>
-{"name": "exec_command", "arguments": {"cmd": "date"}}
+{"name": "<function-name>", "arguments": <args-json-object>}
 </tool_call>
 
-If the needed tool is not "exec_command", replace "exec_command" with one exact valid tool name from the list above.
-
-Critical rules:
-- Output only the <tool_call> block when using a tool.
-- Do not explain the tool call.
+Function-call rules:
+- Use exactly one function call when a tool is needed.
+- Output only the <tool_call> block when calling a tool.
+- Do not include explanations before or after a function call.
+- Do not output Markdown fences.
+- Do not output prose such as "Let me try", "I will call", or "Looking at the tool".
 - Do not discuss the tool schema.
-- Do not say "let me try".
-- Do not say "looking at the tool definition".
-- Do not output markdown.
-- Do not output ```json fences.
-- Do not output <think>.
+- Do not put tool calls inside <think> blocks.
+- The "name" field MUST exactly match one valid function name listed above.
 - The "name" field MUST NOT be empty.
-- The "name" field MUST be copied exactly from the Valid tool names list.
+- The "name" field MUST NOT be "function_name".
+- The "name" field MUST NOT be "tool_name".
 - The "arguments" field MUST be a valid JSON object.
-- For shell commands, use the "cmd" argument.
-{{- end }}
-{{- if $.IsThinkSet }}
-{{- if $.Think }}
-/think
-{{- else }}
-/no_think
-{{- end }}
-{{- else }}
-/no_think
+- Do not wrap "arguments" as a string.
+- Do not invent tools, arguments, or schemas.
+- For shell commands, use the correct command argument from the tool schema.
+- If no tool is needed, answer normally.
 {{- end }}<|im_end|>
 {{ end }}
 {{- range $i, $msg := .Messages }}
+{{- $last := eq (len (slice $.Messages $i)) 1 -}}
 {{- if eq $msg.Role "user" }}<|im_start|>user
-{{ $msg.Content }}
-{{- if and $.IsThinkSet (eq $i $lastUserIdx) }}
-{{- if $.Think }} /think{{- else }} /no_think{{- end }}
-{{- end }}<|im_end|>
+{{ $msg.Content }}<|im_end|>
 {{- else if eq $msg.Role "assistant" }}<|im_start|>assistant
 {{- if and $.IsThinkSet $.Think $msg.Thinking }}
 <think>
@@ -77,19 +70,28 @@ Critical rules:
 {{ $msg.Content }}
 {{- end }}
 {{- if $msg.ToolCalls }}
-{{ range $msg.ToolCalls -}}
+{{- range $msg.ToolCalls }}
 <tool_call>
 {"name": "{{ .Function.Name }}", "arguments": {{ .Function.Arguments }}}
 </tool_call>
-{{ end -}}
-{{- end }}<|im_end|>
+{{- end }}
+{{- end }}{{ if not $last }}<|im_end|>
+{{ end }}
 {{- else if eq $msg.Role "tool" }}<|im_start|>user
 <tool_response>
 {{ $msg.Content }}
 </tool_response>
-Continue the original task using this tool result. If another tool is needed, output exactly one valid <tool_call> block. Otherwise answer normally.<|im_end|>
+Use the tool response above to continue the original task. If another tool is needed, output exactly one valid <tool_call> block. Otherwise answer normally.<|im_end|>
 {{- end }}
-{{- end }}<|im_start|>assistant
+{{- if and (ne $msg.Role "assistant") $last }}<|im_start|>assistant
+{{- if and $.IsThinkSet $.Think }}
+<think>
+{{- else if or (and $.IsThinkSet (not $.Think)) (and $.Tools (not $.IsThinkSet)) }}
+<think>
+</think>
+{{- end }}
+{{- end }}
+{{- end }}
 """
 PARAMETER num_thread 4
 PARAMETER num_batch 1024
