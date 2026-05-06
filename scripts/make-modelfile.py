@@ -391,14 +391,21 @@ def _run(stdscr):
 
     # ── Step 8: generate Modelfile(s) ────────────────────────────────────────
     generated = []
-    multi_variant = len(ctx_values) > 1 or len(batch_values) > 1
+
+    # Helper to convert context to 'k' format (e.g., 32768 -> 32k)
+    def ctx_label(c):
+        try:
+            val = int(c)
+            if val >= 1024:
+                return f"{val // 1024}k"
+            return str(val)
+        except:
+            return str(c)
 
     for ctx in ctx_values:
         for batch in batch_values:
-            if multi_variant:
-                fname = f"Modelfile-{model_name}-ctx{ctx}-batch{batch}"
-            else:
-                fname = f"Modelfile-{model_name}"
+            label = ctx_label(ctx)
+            fname = f"Modelfile-{model_name}-{label}-b{batch}"
 
             lines = [
                 f"FROM {model_path}",
@@ -455,10 +462,7 @@ def _run(stdscr):
 
     for i, fname in enumerate(generated):
         max_y, max_x = stdscr.getmaxyx()
-        if multi_variant:
-            o_name = fname.replace("Modelfile-", "")
-        else:
-            o_name = model_name
+        o_name = fname.replace("Modelfile-", "")
 
         _safe_addstr(stdscr, i + 3, 2, f"Creating {o_name}...", curses.A_DIM)
         stdscr.refresh()
@@ -483,7 +487,8 @@ def _run(stdscr):
         
         stdscr.refresh()
 
-    _safe_addstr(i + 6, 0, "All tasks complete. Press any key to exit.")
+    last_row = max_y - 1 # Use bottom of screen to be safe
+    _safe_addstr(stdscr, last_row, 0, "All tasks complete. Press any key to exit.")
     stdscr.refresh()
     stdscr.getch()
 
