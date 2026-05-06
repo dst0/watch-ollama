@@ -8,19 +8,15 @@ MODELS=$(ollama list | grep -i "Qwen3.6" | awk '{print $1}')
 cp scripts/tool_template.txt tool_template.txt
 
 for model in $MODELS; do
-    echo "Updating $model with tool support and parameters..."
+    echo "Updating $model with official template and parameters..."
     
     # Extract existing FROM line
     ollama show --modelfile "$model" > "Modelfile-$model"
     FROM_LINE=$(grep "FROM" "Modelfile-$model")
     
-    # Create new Modelfile with FROM line, template, and parameters
+    # Create new Modelfile: FROM line + base template
     echo "$FROM_LINE" > "new_modelfile.txt"
-    cat tool_template.txt >> "new_modelfile.txt"
-    echo "PARAMETER num_thread 4" >> "new_modelfile.txt"
-    echo "PARAMETER num_batch 512" >> "new_modelfile.txt"
-    echo "PARAMETER num_ctx 32768" >> "new_modelfile.txt"
-    echo "PARAMETER num_predict -1" >> "new_modelfile.txt"
+    cat scripts/Modelfile.template >> "new_modelfile.txt"
     
     # Create/Overwrite the model
     ollama create "$model" -f "new_modelfile.txt"
@@ -28,5 +24,3 @@ for model in $MODELS; do
     # Cleanup
     rm "Modelfile-$model" "new_modelfile.txt"
 done
-
-rm template_source.txt tool_template.txt
