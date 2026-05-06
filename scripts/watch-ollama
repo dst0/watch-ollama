@@ -888,6 +888,12 @@ def main(stdscr):
             
         render_width = max(1, max_x - 1)
         active_errors = get_error_lines(render_width)
+        if active_errors:
+            try:
+                with open("/tmp/watch-ollama-debug.log", "a") as f_debug:
+                    f_debug.write(f"{time.strftime('%H:%M:%S')} Active Errors: {active_errors}\n")
+            except Exception:
+                pass
         error_h = min(2, len(active_errors))
 
         log_h = max_y - smi_lines - error_h - 2
