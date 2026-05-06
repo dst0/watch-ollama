@@ -138,6 +138,35 @@ class LogSanitizationTests(unittest.TestCase):
         self.assertFalse(auto_scroll)
         self.assertEqual(scroll_pos, 47)
 
+    def test_tui_scroll_down_at_bottom_does_not_auto_resume_if_paused(self):
+        # Initial state: at bottom, but paused (auto_scroll=False)
+        scroll_pos, auto_scroll, changed, smi_changed = TUI.apply_input(
+            [curses.KEY_DOWN],
+            scroll_pos=90,
+            auto_scroll=False,
+            log_line_count=100,
+            log_h=10,
+        )
+
+        self.assertFalse(auto_scroll)
+        self.assertEqual(scroll_pos, 90)
+        self.assertFalse(changed)
+
+    def test_tui_scroll_down_to_hit_bottom_resumes_follow(self):
+        # Initial state: not at bottom, paused
+        scroll_pos, auto_scroll, changed, smi_changed = TUI.apply_input(
+            [curses.KEY_DOWN],
+            scroll_pos=88, # max_scroll is 90, SCROLL_LINE_STEP is 3
+            auto_scroll=False,
+            log_line_count=100,
+            log_h=10,
+        )
+
+        # Hits bottom (91 -> 90), so it SHOULD resume
+        self.assertTrue(auto_scroll)
+        self.assertEqual(scroll_pos, 90)
+        self.assertTrue(changed)
+
     def test_tui_startup_logo_has_fixed_minimum_duration(self):
         self.assertEqual(TUI.STARTUP_LOGO_SECONDS, 2.0)
 

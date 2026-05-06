@@ -439,29 +439,45 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
     if keys:
         for key in keys:
             if key == curses.KEY_UP:
+                old_pos = scroll_pos
                 scroll_pos -= SCROLL_LINE_STEP
-                auto_scroll = False
-                changed = True
+                if scroll_pos < 0:
+                    scroll_pos = 0
+                if scroll_pos != old_pos:
+                    auto_scroll = False
+                    changed = True
             elif key == curses.KEY_DOWN:
+                old_pos = scroll_pos
                 scroll_pos += SCROLL_LINE_STEP
-                changed = True
                 if scroll_pos >= max_scroll:
                     scroll_pos = max_scroll
-                    auto_scroll = True
+                    # Only auto-resume if we actually moved TO hit the bottom
+                    if old_pos < max_scroll:
+                        auto_scroll = True
                 else:
                     auto_scroll = False
+                if scroll_pos != old_pos:
+                    changed = True
             elif key == curses.KEY_PPAGE:
+                old_pos = scroll_pos
                 scroll_pos -= log_h
-                auto_scroll = False
-                changed = True
+                if scroll_pos < 0:
+                    scroll_pos = 0
+                if scroll_pos != old_pos:
+                    auto_scroll = False
+                    changed = True
             elif key == curses.KEY_NPAGE:
+                old_pos = scroll_pos
                 scroll_pos += log_h
-                changed = True
                 if scroll_pos >= max_scroll:
                     scroll_pos = max_scroll
-                    auto_scroll = True
+                    # Only auto-resume if we actually moved TO hit the bottom
+                    if old_pos < max_scroll:
+                        auto_scroll = True
                 else:
                     auto_scroll = False
+                if scroll_pos != old_pos:
+                    changed = True
             elif key == ord('f') or key == ord('F'):
                 auto_scroll = not auto_scroll
                 changed = True
@@ -490,17 +506,25 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
                 try:
                     _, _, _, _, bstate = curses.getmouse()
                     if bstate & 0x10000: # curses.BUTTON4_PRESSED/SCROLL_UP
+                        old_pos = scroll_pos
                         scroll_pos -= SCROLL_LINE_STEP
-                        auto_scroll = False
-                        changed = True
+                        if scroll_pos < 0:
+                            scroll_pos = 0
+                        if scroll_pos != old_pos:
+                            auto_scroll = False
+                            changed = True
                     elif bstate & 0x200000: # curses.BUTTON5_PRESSED/SCROLL_DOWN
+                        old_pos = scroll_pos
                         scroll_pos += SCROLL_LINE_STEP
-                        changed = True
                         if scroll_pos >= max_scroll:
                             scroll_pos = max_scroll
-                            auto_scroll = True
+                            # Only auto-resume if we actually moved TO hit the bottom
+                            if old_pos < max_scroll:
+                                auto_scroll = True
                         else:
                             auto_scroll = False
+                        if scroll_pos != old_pos:
+                            changed = True
                 except curses.error:
                     pass
 
@@ -993,32 +1017,7 @@ def main(stdscr):
         with log_lock:
             curr_log_ver = log_version
 
-        # Apply input using the cached visible line count.  The scroll
-        # position will be re-clamped accurately after we rebuild log lines.
-        approx_smi_h = min(max(1, max_y // 2), max(1, len(smi_snapshot)))
-        approx_err_h = min(2, len(active_errors))
-        approx_log_h = max(1, max_y - approx_smi_h - approx_err_h - 2)
-        scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
-            keys, scroll_pos, auto_scroll, len(visible_log_lines), approx_log_h
-        )
-        if smi_changed:
-            smi_reset_counter = SMI_RESET_FRAMES  # clear reservations to allow panel to shrink
-        input_was_active = bool(input_changed)
-
-        # ── DIRTY CHECK ──────────────────────────────────────────────────
-        if (input_changed
-                or curr_term_size != last_term_size
-                or curr_smi_ver != last_smi_ver
-                or curr_log_ver != last_log_ver
-                or curr_error_sig != last_error_sig
-                or scroll_pos != last_scroll
-                or auto_scroll != last_auto):
-            render_dirty = True
-
-        if not render_dirty:
-            continue
-
-        # ── LAYOUT ───────────────────────────────────────────────────────
+        # ── LAYOUT (accurate dimensions for input) ───────────────────────
         max_smi_lines = max(1, max_y // 2)
         observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
 
@@ -1038,16 +1037,28 @@ def main(stdscr):
         reserved_smi_lines_by_height[max_y] = smi_lines
 
         error_h = min(2, len(active_errors))
-        if active_errors:
-            try:
-                with open(DEBUG_LOG, "a") as f_debug:
-                    f_debug.write(f"{time.strftime('%H:%M:%S')} Active Errors: {active_errors}\n")
-            except Exception:
-                pass
+        log_h = max(1, max_y - smi_lines - error_h - 2)
 
-        log_h = max_y - smi_lines - error_h - 2
-        if log_h < 1:
-            log_h = 1  # Prevent crash on tiny terminal
+        # Apply input using the accurate layout.
+        scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
+            keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
+        )
+        if smi_changed:
+            smi_reset_counter = SMI_RESET_FRAMES  # clear reservations to allow panel to shrink
+        input_was_active = bool(input_changed)
+
+        # ── DIRTY CHECK ──────────────────────────────────────────────────
+        if (input_changed
+                or curr_term_size != last_term_size
+                or curr_smi_ver != last_smi_ver
+                or curr_log_ver != last_log_ver
+                or curr_error_sig != last_error_sig
+                or scroll_pos != last_scroll
+                or auto_scroll != last_auto):
+            render_dirty = True
+
+        if not render_dirty:
+            continue
 
         # ── LOG LINES (cached) ───────────────────────────────────────────
         visible_log_lines, log_snapshot, total_count = build_visible_log_lines(render_width)
@@ -1180,7 +1191,7 @@ def main(stdscr):
         if max_y > 0:
             follow_txt = "FOLLOWING" if auto_scroll else "PAUSED"
             follow_hint = "Pause" if auto_scroll else "Follow"
-            hints = f" (G:GPU C:CPU L:Log H:Hint T:Tool | F:{follow_hint} | Q:Quit) " if SETTINGS["show_hints"] else f" ({follow_txt}) "
+            hints = f" (G:GPU C:CPU L:Log H:Hint T:Tool | F:{follow_hint} | Q:Quit) " if SETTINGS["show_hints"] else ""
             status_text = f" [{follow_txt}] (Line {scroll_pos}/{len(visible_log_lines)}){hints}"
             status_line = status_text.ljust(max_x-1)
             try:
