@@ -34,11 +34,8 @@ Tool rules:
 - Do not call a tool when the answer is already known and no external action is needed.
 - If no tool is needed, answer normally.
 {{- end }}
-{{- if .Thinking }}
-/think
-{{- else }}
-/no_think
-{{- end }}<|im_end|>
+{{/* Always /think: this template serves Codex (OpenAI API) which never sets .Thinking */}}
+/think<|im_end|>
 {{ end }}
 {{- range .Messages }}
 {{- if eq .Role "user" }}<|im_start|>user
