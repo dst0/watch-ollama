@@ -15,7 +15,7 @@ for model in $MODELS; do
     
     # Create new Modelfile: FROM line + base template
     echo "$FROM_LINE" > "new_modelfile.txt"
-    cat scripts/Qwen3.6.template >> "new_modelfile.txt"
+    cat Qwen3.6.template >> "new_modelfile.txt"
     
     # Create/Overwrite the model
     ollama create "$model" -f "new_modelfile.txt"

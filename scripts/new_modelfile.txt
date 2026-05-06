@@ -1,3 +1,73 @@
 # To build a new Modelfile based on this, replace FROM with:
-# FROM Qwen3.6-27B-Q3KM-16k:latest
-FROM /usr/share/ollama/.ollama/models/blobs/sha256-bdfa99d488b501f5ca711f35c930f005319a064eabcaae23290571a25c499eeb
+# FROM Qwen3.6-27B-Q3KL-16k:latest
+FROM /usr/share/ollama/.ollama/models/blobs/sha256-6cb7fd328697744497adcb152d67239a2e31ef79e0033098b94db5771a65831c
+TEMPLATE """
+{{- if or .System .Tools }}<|im_start|>system
+{{- if .Tools }}
+# Tools
+
+You are a helpful assistant with access to tools. Use tools only when they are needed to answer accurately or perform an action.
+
+Available tools:
+<tools>
+{{ range .Tools -}}
+{"type": "function", "function": {{ .Function }}}
+{{ end -}}
+</tools>
+
+When a tool is needed, reply with exactly one tool call and no extra text.
+
+Tool call format:
+<tool_call>
+{"name": "function_name", "arguments": {"key": "value"}}
+</tool_call>
+
+Tool rules:
+- "name" MUST exactly match one available tool function name.
+- "arguments" MUST be a valid JSON object.
+- Do not wrap "arguments" as a string.
+- Do not invent tools, arguments, or schemas.
+- Do not include explanations before or after a tool call.
+- Do not place tool calls inside <think> blocks.
+- Do not call a tool when the answer is already known and no external action is needed.
+- If no tool is needed, answer normally.
+{{- end }}
+{{- if .System }}
+
+{{ .System }}
+{{- end }}<|im_end|>
+{{ end }}
+{{- range .Messages }}
+{{- if eq .Role "user" }}<|im_start|>user
+{{ .Content }}<|im_end|>
+{{- else if eq .Role "assistant" }}<|im_start|>assistant
+{{- if .Thinking }}
+<think>
+{{ .Thinking }}
+</think>
+{{- end }}
+{{- if .Content }}
+{{ .Content }}
+{{- end }}
+{{- if .ToolCalls }}
+{{ range .ToolCalls -}}
+<tool_call>
+{"name": "{{ .Function.Name }}", "arguments": {{ .Function.Arguments }}}
+</tool_call>
+{{ end -}}
+{{- end }}<|im_end|>
+{{- else if eq .Role "tool" }}<|im_start|>user
+<tool_response>
+{{ .Content }}
+</tool_response>
+Use the tool response above to continue answering the original user request.<|im_end|>
+{{- end }}
+{{- end }}<|im_start|>assistant
+"""
+PARAMETER num_thread 4
+PARAMETER num_batch 1024
+PARAMETER num_ctx 32768
+PARAMETER num_predict -1
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
