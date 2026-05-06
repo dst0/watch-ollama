@@ -441,7 +441,7 @@ def _run(stdscr):
     for i, fname in enumerate(generated):
         _safe_addstr(stdscr, i + 2, 2, fname, curses.A_BOLD)
     _safe_addstr(stdscr, len(generated) + 3, 0, "To import, run:")
-    _safe_addstr(stdscr, len(generated) + 4, 2, f"ollama create {model_name} -f <Modelfile>", curses.A_CYAN)
+    _safe_addstr(stdscr, len(generated) + 4, 2, f"ollama create {model_name} -f <Modelfile>", curses.color_pair(1))
     _safe_addstr(stdscr, len(generated) + 6, 0, "Press any key to exit.")
     stdscr.refresh()
     stdscr.getch()
