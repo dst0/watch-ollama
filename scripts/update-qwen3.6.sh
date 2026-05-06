@@ -36,5 +36,7 @@ for model in $MODELS; do
     cat "$TEMPLATE" >> "$TMPFILE"
 
     # Create/Overwrite the model
-    ollama create "$model" -f "$TMPFILE"
+    if ! ollama create "$model" -f "$TMPFILE"; then
+        echo "WARNING: failed to create model $model, skipping." >&2
+    fi
 done
