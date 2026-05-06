@@ -1,61 +1,68 @@
 TEMPLATE """
-{{- $lastUserIdx := -1 -}}
-{{- range $idx, $msg := .Messages -}}
-{{- if eq $msg.Role "user" }}{{ $lastUserIdx = $idx }}{{ end -}}
-{{- end }}
 {{- if or .System .Tools }}<|im_start|>system
+{{- if .Tools }}
 # Tools
-You have access to the following functions:
+
+You are a helpful assistant with access to tools. Use tools only when they are needed to answer accurately or perform an action.
+
+Available tools:
 <tools>
-{{- range .Tools }}
-{{ .Function }}
-{{- end }}
+{{ range .Tools -}}
+{"type": "function", "function": {{ .Function }}}
+{{ end -}}
 </tools>
-If you choose to call a function ONLY reply in the following format with NO suffix:
+
+When a tool is needed, reply with exactly one tool call and no extra text.
+
+Tool call format:
 <tool_call>
-<function=function_name>
-<parameter=key>
-value
-</parameter>
-</function>
+{"name": "function_name", "arguments": {"key": "value"}}
 </tool_call>
+
+Tool rules:
+- "name" MUST exactly match one available tool function name.
+- "arguments" MUST be a valid JSON object.
+- Do not wrap "arguments" as a string.
+- Do not invent tools, arguments, or schemas.
+- Do not include explanations before or after a tool call.
+- Do not place tool calls inside <think> blocks.
+- Do not call a tool when the answer is already known and no external action is needed.
+- If no tool is needed, answer normally.
+{{- end }}
 {{- if .System }}
+
 {{ .System }}
 {{- end }}<|im_end|>
 {{ end }}
-{{- range $i, $_ := .Messages }}
-{{- $last := eq (len (slice $.Messages $i)) 1 -}}
+{{- range .Messages }}
 {{- if eq .Role "user" }}<|im_start|>user
 {{ .Content }}<|im_end|>
-{{ else if eq .Role "assistant" }}<|im_start|>assistant
-{{ if .Thinking }}
+{{- else if eq .Role "assistant" }}<|im_start|>assistant
+{{- if .Thinking }}
 <think>
 {{ .Thinking }}
 </think>
-{{ end }}
-{{ if .Content }}{{ .Content }}
-{{- else if .ToolCalls }}<tool_call>
-{{ range .ToolCalls }}
-<function={{ .Function.Name }}>
-{{ range $key, $value := .Function.Arguments }}
-<parameter={{ $key }}>
-{{ $value }}
-</parameter>
-{{ end }}
-</function>
-{{ end }}</tool_call>
-{{- end }}{{ if not $last }}<|im_end|>
-{{ end }}
+{{- end }}
+{{- if .Content }}
+{{ .Content }}
+{{- end }}
+{{- if .ToolCalls }}
+{{ range .ToolCalls -}}
+<tool_call>
+{"name": "{{ .Function.Name }}", "arguments": {{ .Function.Arguments }}}
+</tool_call>
+{{ end -}}
+{{- end }}<|im_end|>
 {{- else if eq .Role "tool" }}<|im_start|>user
 <tool_response>
 {{ .Content }}
-</tool_response><|im_end|>
-{{ end }}
-{{- if and (ne .Role "assistant") $last }}<|im_start|>assistant
-{{ end }}
-{{- end }}"""
+</tool_response>
+Use the tool response above to continue answering the original user request.<|im_end|>
+{{- end }}
+{{- end }}<|im_start|>assistant
+"""
 PARAMETER num_thread 4
-PARAMETER num_batch 512
+PARAMETER num_batch 1024
 PARAMETER num_ctx 32768
 PARAMETER num_predict -1
 PARAMETER stop "<|im_start|>"

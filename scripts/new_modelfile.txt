@@ -1,0 +1,3 @@
+# To build a new Modelfile based on this, replace FROM with:
+# FROM Qwen3.6-35B-A3B-IQ3S-16k:latest
+FROM /usr/share/ollama/.ollama/models/blobs/sha256-66a3ca888ce13482b40c333db2432c0ebde3a7b13754fc29f0c6f5e89703ec66

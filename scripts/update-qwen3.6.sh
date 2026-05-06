@@ -5,7 +5,6 @@
 MODELS=$(ollama list | grep -i "Qwen3.6" | awk '{print $1}')
 
 # Get the template
-cp scripts/tool_template.txt tool_template.txt
 
 for model in $MODELS; do
     echo "Updating $model with official template and parameters..."

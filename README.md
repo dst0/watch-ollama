@@ -89,8 +89,8 @@ Prevent Ollama from saturating your system CPU by limiting its quota via systemd
 
 ```ini
 [Service]
-# Limits CPU usage to 400% (effectively 4 cores)
-CPUQuota=400%
+# Limits CPU usage to 400% (effectively 8 cores)
+CPUQuota=800%
 ```
 
 After creating the file, apply the changes:

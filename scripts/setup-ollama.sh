@@ -59,7 +59,7 @@ printf "[Service]\nEnvironment=\"OLLAMA_DEBUG=2\"\nStandardOutput=append:/var/lo
 
 CPU_LIMIT_CONFIG="$OLLAMA_SERVICE_DIR/40-cpu-limit.conf"
 echo "Configuring CPU Limit to 400%..."
-printf "[Service]\nCPUQuota=400%%\n" | sudo tee "$CPU_LIMIT_CONFIG" > /dev/null
+printf "[Service]\nCPUQuota=800%%\n" | sudo tee "$CPU_LIMIT_CONFIG" > /dev/null
 
 # Persist the URL so other tools (e.g. watch-ollama) can read it
 printf "OLLAMA_HOST=%s\n" "$FULL_ADDR" > "$OLLAMA_CONF"
