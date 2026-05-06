@@ -464,7 +464,17 @@ def _run(stdscr):
 
     for i, fname in enumerate(generated):
         max_y, max_x = stdscr.getmaxyx()
-        o_name = fname.replace("Modelfile-", "").lower()
+        
+        # Derive o_name from filename, but use a colon for the tag part
+        # Modelfile-{model_name}-{label}-b{batch}
+        name_parts = fname.replace("Modelfile-", "").split("-")
+        if len(name_parts) >= 3:
+            # The last two parts are label and batch (e.g., 64k and b256)
+            tag = "-".join(name_parts[-2:])
+            base = "-".join(name_parts[:-2])
+            o_name = f"{base}:{tag}".lower()
+        else:
+            o_name = fname.replace("Modelfile-", "").lower()
 
         # Simple scroll/wrap protection
         row = i + 3
