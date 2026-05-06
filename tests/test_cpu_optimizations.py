@@ -252,15 +252,8 @@ class RenderEventTests(unittest.TestCase):
         src = (ROOT / "scripts" / "watch-ollama").read_text()
         import re
         # After 'except (ValueError, OSError):' there must NOT be a bare 'break'
-        # without a set_error call.
-        # Find the select.select failure handler block.
-        pattern = re.compile(
-            r"except \(ValueError, OSError\):\s*\n(.*?)\n.*?(?:break|return)",
-            re.DOTALL
-        )
-        # Simple check: the word 'break' must not appear in the select exception handler
-        # without a preceding set_error call on the same or previous line.
-        # Easier: just check there's no bare 'break' as the only action.
+        # as the only statement.  A bare break would exit the while loop silently
+        # without calling set_error(), leaving the user with no feedback.
         handler_match = re.search(
             r"except \(ValueError, OSError\):[ \t]*\n([ \t]+)break",
             src
