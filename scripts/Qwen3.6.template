@@ -1,5 +1,5 @@
 TEMPLATE """
-{{- if or .System .Tools }}<|im_start|>system
+{{- if or .System .Tools .Thinking }}<|im_start|>system
 {{- if .System }}
 
 {{ .System }}
@@ -33,7 +33,9 @@ Tool rules:
 - Do not place tool calls inside <think> blocks.
 - Do not call a tool when the answer is already known and no external action is needed.
 - If no tool is needed, answer normally.
-{{- end }}<|im_end|>
+{{- end }}
+{{/* Always /think: this template serves Codex (OpenAI API) which never sets .Thinking */}}
+/think<|im_end|>
 {{ end }}
 {{- range .Messages }}
 {{- if eq .Role "user" }}<|im_start|>user
