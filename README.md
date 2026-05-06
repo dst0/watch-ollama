@@ -117,7 +117,7 @@ Run the TUI for real-time monitoring:
 watch-ollama
 ```
 
-The TUI is split into two panels separated by a reverse-video divider. It features high-responsiveness polling: UI layout and telemetry data refresh instantly when toggling panels or switching tools.
+The TUI is split into two panels separated by a reverse-video divider. It uses **event-driven redraws**: the screen is repainted only when log content, telemetry, errors, scroll position, or terminal size actually change, keeping idle CPU usage low. Telemetry (CPU/GPU/RAM/sensor data) refreshes every 2 s; active-model parameters are cached for 30 s per model and re-fetched only when the model set changes or the TTL expires.
 
 | Panel | Contents |
 |-------|----------|
