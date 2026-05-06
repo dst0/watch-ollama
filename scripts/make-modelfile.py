@@ -538,6 +538,14 @@ def _run(stdscr):
     except Exception as e:
         _safe_addstr(stdscr, max_y - 3, 0, f"\u2717 Service restart failed: {str(e)}", curses.color_pair(3))
 
+    # ── Step 12: Cleanup ──────────────────────────────────────────────────────
+    for fname in generated:
+        if os.path.exists(fname):
+            try:
+                os.remove(fname)
+            except:
+                pass
+
     _safe_addstr(stdscr, max_y - 1, 0, "All tasks complete. Press any key to exit.")
     stdscr.refresh()
     stdscr.getch()
