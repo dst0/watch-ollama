@@ -231,8 +231,43 @@ class RenderEventTests(unittest.TestCase):
         self.assertEqual(temp, 42.0)
         self.assertEqual(lines, ["test line"])
 
-    def test_log_version_is_int(self):
-        self.assertIsInstance(TUI.log_version, int)
+    def test_set_error_sets_render_event(self):
+        """set_error() must wake the main loop so error banners show immediately."""
+        TUI.render_event.clear()
+        TUI.set_error("test_key", "something went wrong")
+        self.assertTrue(TUI.render_event.is_set(),
+            "render_event must be set after set_error() so the banner shows promptly")
+
+    def test_set_error_clear_also_sets_render_event(self):
+        """Clearing an error (None message) must also wake the main loop."""
+        TUI.set_error("test_key", "something went wrong")  # set first
+        TUI.render_event.clear()
+        TUI.set_error("test_key", None)  # now clear it
+        self.assertTrue(TUI.render_event.is_set(),
+            "render_event must be set when an error is cleared")
+
+    def test_select_failure_in_tail_log_error_path_uses_return_not_break(self):
+        """The select.select failure path in tail_log() must set an error
+        (not silently break), so the user can see that log tailing stopped."""
+        src = (ROOT / "scripts" / "watch-ollama").read_text()
+        import re
+        # After 'except (ValueError, OSError):' there must NOT be a bare 'break'
+        # without a set_error call.
+        # Find the select.select failure handler block.
+        pattern = re.compile(
+            r"except \(ValueError, OSError\):\s*\n(.*?)\n.*?(?:break|return)",
+            re.DOTALL
+        )
+        # Simple check: the word 'break' must not appear in the select exception handler
+        # without a preceding set_error call on the same or previous line.
+        # Easier: just check there's no bare 'break' as the only action.
+        handler_match = re.search(
+            r"except \(ValueError, OSError\):[ \t]*\n([ \t]+)break",
+            src
+        )
+        self.assertIsNone(handler_match,
+            "select.select failure handler must not use a bare 'break' — "
+            "it must call set_error() so the user sees the failure")
 
 
 # ---------------------------------------------------------------------------

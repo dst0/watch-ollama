@@ -398,15 +398,22 @@ def build_visible_log_lines(width):
     wrap is only recomputed when the terminal width changes or new log data
     has arrived.  The cache is written and read exclusively from the main
     thread, so no additional locking is required for the cache variables.
+
+    The log_version is read inside log_lock (the only way to get a consistent
+    value), but on a cache hit we return immediately after releasing the lock
+    without copying the deque.
     """
     global _visible_log_cache, _visible_log_cache_key
+    # Fast path: check under the lock but avoid copying the deque when cached.
     with log_lock:
         curr_version = log_version
         cache_key = (width, curr_version)
         if _visible_log_cache_key == cache_key and _visible_log_cache is not None:
             return _visible_log_cache
+        # Cache miss: take a snapshot while we still hold the lock.
         log_snapshot = list(log_lines)
         total_count = log_lines_total_count
+    # Build wrapped lines outside the lock — this is the expensive part.
     visible = []
     for idx, line in enumerate(log_snapshot):
         for segment in wrap_render_line(line, width):
@@ -510,6 +517,10 @@ def set_error(key, message):
             error_messages[key] = sanitize_render_text(message)
         else:
             error_messages.pop(key, None)
+    # Wake the main loop so the error banner updates immediately.
+    # Called outside error_lock to keep the call site simple; render_event
+    # is thread-safe and never acquired together with any other lock.
+    render_event.set()
 
 def get_val_color(val, t1, t2, t3, t4, color_pair_func=curses.color_pair):
     if val < t1:
@@ -736,7 +747,10 @@ def tail_log():
                         log_lines.append(current_line.replace('\t', '    '))
                         log_lines_total_count += 1
                     log_version += 1  # signal cache invalidation
-                render_event.set()  # wake main-loop idle wait
+                # Wake the main loop. Called outside log_lock intentionally —
+                # holding a lock across render_event.set() is unnecessary and
+                # would create an avoidable lock ordering risk.
+                render_event.set()
             else:
                 if p.poll() is not None:
                     error = ""
@@ -749,10 +763,13 @@ def tail_log():
                     return
                 # Block up to 0.25 s waiting for the tail process to write
                 # more data; this replaces the original busy-sleep(0.05).
+                # select.select() is called outside log_lock to avoid holding
+                # the lock across a blocking call.
                 try:
                     select.select([p.stdout], [], [], 0.25)
                 except (ValueError, OSError):
-                    break
+                    set_error("log", "Log tail interrupted")
+                    return
     except Exception as e:
         set_error("log", f"Log tail error: {e}")
         log_ready.set()
