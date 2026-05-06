@@ -462,9 +462,15 @@ def _run(stdscr):
 
     for i, fname in enumerate(generated):
         max_y, max_x = stdscr.getmaxyx()
-        o_name = fname.replace("Modelfile-", "")
+        o_name = fname.replace("Modelfile-", "").lower()
 
-        _safe_addstr(stdscr, i + 3, 2, f"Creating {o_name}...", curses.A_DIM)
+        # Simple scroll/wrap protection
+        row = i + 3
+        if row >= max_y - 2:
+            _safe_addstr(stdscr, max_y - 2, 0, "... more models imported (see ollama list)", curses.A_DIM)
+            break
+
+        _safe_addstr(stdscr, row, 2, f"Creating {o_name}...", curses.A_DIM)
         stdscr.refresh()
         
         try:
@@ -472,23 +478,23 @@ def _run(stdscr):
                                  capture_output=True, text=True, env=env)
             
             # Clear the "Creating..." line
-            stdscr.move(i + 3, 0)
+            stdscr.move(row, 0)
             stdscr.clrtoeol()
             
             if res.returncode == 0:
-                _safe_addstr(stdscr, i + 3, 2, f"\u2713 {o_name}", curses.color_pair(2))
+                _safe_addstr(stdscr, row, 2, f"\u2713 {o_name}", curses.color_pair(2))
             else:
-                _safe_addstr(stdscr, i + 3, 2, f"\u2717 {o_name} (failed)", curses.color_pair(3))
-                # Show error message on next line
-                err_msg = res.stderr.strip().split('\n')[-1]
-                _safe_addstr(stdscr, i + 4, 4, err_msg[:max_x-6], curses.A_DIM)
+                _safe_addstr(stdscr, row, 2, f"\u2717 {o_name} (failed)", curses.color_pair(3))
+                # Show error message on next line if space allows
+                if row + 1 < max_y - 2:
+                    err_msg = res.stderr.strip().split('\n')[-1]
+                    _safe_addstr(stdscr, row + 1, 4, err_msg[:max_x-6], curses.A_DIM)
         except Exception as e:
-            _safe_addstr(stdscr, i + 3, 2, f"\u2717 {o_name} (error: {str(e)})", curses.color_pair(3))
+            _safe_addstr(stdscr, row, 2, f"\u2717 {o_name} (error: {str(e)})", curses.color_pair(3))
         
         stdscr.refresh()
 
-    last_row = max_y - 1 # Use bottom of screen to be safe
-    _safe_addstr(stdscr, last_row, 0, "All tasks complete. Press any key to exit.")
+    _safe_addstr(stdscr, max_y - 1, 0, "All tasks complete. Press any key to exit.")
     stdscr.refresh()
     stdscr.getch()
 
