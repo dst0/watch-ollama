@@ -170,17 +170,22 @@ switch-gpu status   # show current backend
 ```
 
 ### Server Configuration — `setup-ollama`
-Configure the Ollama bind address and port interactively (defaults: `0.0.0.0:11435`):
+Configure the Ollama bind address, port, and model keep-alive duration interactively (defaults: `0.0.0.0:11435`, `1m`):
 ```bash
 setup-ollama
 ```
 Or pass values directly:
 ```bash
-setup-ollama 0.0.0.0 11435
+setup-ollama 0.0.0.0 11435 1m
 ```
-This writes an `ollama.conf` file alongside the scripts so that `watch-ollama` automatically connects to the correct address. It also configures systemd drop-ins for `OLLAMA_HOST` and `OLLAMA_DEBUG=2` logging to `/var/log/ollama.log`.
+This writes an `ollama.conf` file alongside the scripts so that `watch-ollama` automatically connects to the correct address. It also configures systemd drop-ins for `OLLAMA_HOST`, `OLLAMA_KEEP_ALIVE`, and `OLLAMA_DEBUG=2` logging to `/var/log/ollama.log`.
 
 > **Note on port**: Ollama's built-in default is `11434`. This project defaults to `11435` to allow running a custom instance alongside a system-managed one. Adjust as needed.
+
+### Debugging — `watch-ollama-debug.log`
+If the TUI is behaving unexpectedly or failing to display error indicators correctly, an internal debug log is maintained in the project working directory:
+- **Location**: `~/.ollama-watch-tool/watch-ollama-debug.log`
+- **Purpose**: Records internal tool errors and active UI indicator states.
 
 ### Updating Ollama — `update-ollama`
 Downloads the latest Ollama release and restarts the service:
