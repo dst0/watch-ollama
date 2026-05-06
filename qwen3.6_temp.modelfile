@@ -1,0 +1,12 @@
+FROM /usr/share/ollama/.ollama/models/blobs/sha256-66a3ca888ce13482b40c333db2432c0ebde3a7b13754fc29f0c6f5e89703ec66
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+"""
+SYSTEM """You are a helpful assistant. You should explain your reasoning steps inside <think> tags before providing the final answer. Make sure to clearly state what you are doing in the final response."""
+PARAMETER num_ctx 32768
+PARAMETER think true
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"

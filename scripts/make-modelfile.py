@@ -482,8 +482,8 @@ def _run(stdscr):
         # Modelfile-{model_name}-{label}-b{batch}
         import re
         def sanitize(s):
-            # Keep alphanumeric, hyphens, and colons (for tag), replace rest with hyphen
-            return re.sub(r'[^a-z0-9:-]', '-', s.lower())
+            # Keep alphanumeric, hyphens, dots, and underscores. Replace rest with hyphen.
+            return re.sub(r'[^a-z0-9._-]', '-', s.lower())
 
         name_parts = fname.replace("Modelfile-", "").split("-")
         if len(name_parts) >= 3:

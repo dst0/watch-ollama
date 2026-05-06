@@ -285,12 +285,12 @@ class TestSanitization(unittest.TestCase):
     def test_sanitize_logic(self):
         import re
         def sanitize(s):
-            return re.sub(r'[^a-z0-9:-]', '-', s.lower())
+            return re.sub(r'[^a-z0-9._-]', '-', s.lower())
 
-        self.assertEqual(sanitize("MyModel:32k-b512"), "mymodel:32k-b512")
-        self.assertEqual(sanitize("Invalid_Name!"), "invalid-name-")
-        self.assertEqual(sanitize("qwen_qwen3.5"), "qwen-qwen3-5")
-        self.assertEqual(sanitize("model:tag"), "model:tag")
+        self.assertEqual(sanitize("MyModel:32k-b512"), "mymodel-32k-b512")
+        self.assertEqual(sanitize("Invalid_Name!"), "invalid_name-")
+        self.assertEqual(sanitize("qwen_qwen3.5"), "qwen_qwen3.5")
+        self.assertEqual(sanitize("model:tag"), "model-tag")
 
 
     """Tests for the file-generation loop logic."""
