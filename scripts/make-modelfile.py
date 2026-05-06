@@ -28,9 +28,11 @@ def generate_modelfile():
     choice = int(input("Select file index: ")) - 1
     model_path = files[choice]
     model_name = input("Enter model name (e.g., my-model): ")
-    ctx = input("Context length (e.g., 32768): ") or "32768"
-    threads = input("Number of threads (e.g., 4): ") or "4"
-    batch = input("Batch size (e.g., 256): ") or "256"
+    
+    # Standardized Parameters
+    ctx = input("Context length [32768]: ") or "32768"
+    threads = input("Number of threads [4]: ") or "4"
+    batch = input("Batch size [512]: ") or "512"
     
     num_ctx = f"PARAMETER num_ctx {ctx}"
     num_thread = f"PARAMETER num_thread {threads}"
@@ -39,11 +41,17 @@ def generate_modelfile():
     print("Generate Modelfile content...")
     content = f"FROM {model_path}\n{num_ctx}\n{num_thread}\n{num_batch}\n"
     
-    # Optional System Prompt
-    sys_prompt = input("System prompt (leave blank for default): ")
+    # System Prompt / Tools Support
+    print("Optional: Enter a System Prompt (or path to a system prompt file).")
+    sys_prompt = input("System prompt: ")
     if sys_prompt:
-        content += f"SYSTEM \"{sys_prompt}\"\n"
-        
+        # If it's a file path, read it
+        if os.path.exists(sys_prompt):
+            with open(sys_prompt, "r") as f:
+                content += f"SYSTEM \"{f.read()}\"\n"
+        else:
+            content += f"SYSTEM \"{sys_prompt}\"\n"
+            
     with open(f"Modelfile-{model_name}", "w") as f:
         f.write(content)
         
