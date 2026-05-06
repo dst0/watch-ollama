@@ -394,6 +394,16 @@ def _run(stdscr):
     # ── Step 8: generate Modelfile(s) ────────────────────────────────────────
     generated = []
 
+    # Load template
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Qwen3.6.template")
+    template_content = ""
+    if os.path.exists(template_path):
+        with open(template_path, "r") as fh:
+            template_content = fh.read()
+    else:
+        # Fallback if template missing (should not happen based on requirements)
+        template_content = "PARAMETER num_ctx {num_ctx}\nPARAMETER num_thread {num_thread}\nPARAMETER num_batch {num_batch}\n"
+
     # Helper to convert context to 'k' format (e.g., 32768 -> 32k)
     def ctx_label(c):
         try:
@@ -409,19 +419,22 @@ def _run(stdscr):
             label = ctx_label(ctx)
             fname = f"Modelfile-{model_name}-{label}-b{batch}"
 
-            lines = [
-                f"FROM {model_path}",
-                f"PARAMETER num_ctx {ctx}",
-                f"PARAMETER num_thread {threads}",
-                f"PARAMETER num_batch {batch}",
-            ]
+            # Start with FROM line
+            content = f"FROM {model_path}\n"
+            
+            # Apply template with replacements
+            body = template_content.replace("{num_ctx}", str(ctx)) \
+                                   .replace("{num_thread}", str(threads)) \
+                                   .replace("{num_batch}", str(batch))
+            content += body
+
             if sys_prompt_text:
                 # Escape embedded double-quotes
                 escaped = sys_prompt_text.replace('"', '\\"')
-                lines.append(f'SYSTEM "{escaped}"')
+                content += f'\nSYSTEM "{escaped}"'
 
             with open(fname, "w") as fh:
-                fh.write("\n".join(lines) + "\n")
+                fh.write(content.strip() + "\n")
             generated.append(fname)
     
     # ── Step 9: summary ───────────────────────────────────────────────────────
