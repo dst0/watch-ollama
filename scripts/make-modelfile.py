@@ -494,6 +494,14 @@ def _run(stdscr):
         
         stdscr.refresh()
 
+    # Update header to show completion
+    stdscr.move(0, 0)
+    stdscr.clrtoeol()
+    stdscr.move(1, 0)
+    stdscr.clrtoeol()
+    _draw_title(stdscr, "Ollama import complete")
+    _safe_addstr(stdscr, 1, 0, "All selected models have been processed.", curses.A_DIM)
+
     _safe_addstr(stdscr, max_y - 1, 0, "All tasks complete. Press any key to exit.")
     stdscr.refresh()
     stdscr.getch()
