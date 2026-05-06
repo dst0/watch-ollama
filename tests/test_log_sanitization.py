@@ -126,7 +126,7 @@ class LogSanitizationTests(unittest.TestCase):
         )
 
     def test_tui_scroll_direction_can_reverse_without_waiting_for_backlog(self):
-        scroll_pos, auto_scroll, changed = TUI.apply_input(
+        scroll_pos, auto_scroll, changed, smi_changed = TUI.apply_input(
             [curses.KEY_UP, curses.KEY_UP, curses.KEY_DOWN],
             scroll_pos=50,
             auto_scroll=False,
