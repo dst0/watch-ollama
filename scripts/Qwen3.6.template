@@ -27,6 +27,7 @@ Tool call format:
 Tool rules:
 - "name" MUST exactly match one available tool function name.
 - "arguments" MUST be a valid JSON object.
+- You MUST provide all required fields as defined in the tool's schema.
 - Do not wrap "arguments" as a string.
 - Do not invent tools, arguments, or schemas.
 - Do not include explanations before or after a tool call.
