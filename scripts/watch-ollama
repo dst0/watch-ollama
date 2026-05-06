@@ -526,6 +526,26 @@ def poll_smi():
         cpu_load = get_cpu_usage()
         cpu_temp, sys_temps = get_system_temps()
         ram_total, ram_avail, ram_used = get_ram_usage()
+
+        # For nvidia-smi, GPU temps don't appear in sensors — extract them directly
+        if tool == "nvidia-smi":
+            try:
+                nv_out = subprocess.check_output(
+                    ["nvidia-smi", "--query-gpu=index,temperature.gpu", "--format=csv,noheader"],
+                    text=True, errors="replace", stderr=subprocess.DEVNULL,
+                )
+                nv_entries = []
+                for nv_line in nv_out.strip().splitlines():
+                    parts = [p.strip() for p in nv_line.split(",")]
+                    if len(parts) >= 2 and parts[1].lstrip("-").isdigit():
+                        nv_entries.append((int(parts[0]), float(parts[1])))
+                multi_gpu = len(nv_entries) > 1
+                for idx, temp in nv_entries:
+                    label = f"GPU{idx}" if multi_gpu else "GPU"
+                    sys_temps.append(f"{label}:{temp:.0f}°C")
+                    cpu_temp = max(cpu_temp, temp)
+            except Exception:
+                pass
         
         # Parallel sessions allowed
         num_parallel = get_ollama_num_parallel()

@@ -5,11 +5,13 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 ## Features
 
 - **Interactive TUI**: `watch-ollama` provides real-time GPU/SMI monitoring and readable logs.
+  - **Multi-vendor GPU support**: Auto-detects `nvidia-smi` (NVIDIA), `amd-smi`, or `rocm-smi` (AMD). Press `T` to cycle through tools at runtime.
   - **Integrated Indicators**: 🌡️ symbols with high-compatibility background color indicators for intuitive temperature monitoring.
   - **Hottest-Sensor Status**: Global system health (title and status bar) dynamically reflects the highest temperature across CPU, GPU, and all system sensors.
   - **Dynamic Title**: Synchronized color-coded status blocks (🟦, 🟩, 🟨, 🟧, 🟥) in the terminal title bar.
   - **Official Metrics**: Reporting and TUI use official Ollama log-based token metrics (`prompt_eval_count`, `eval_count`) for precise speed and performance measurement.
   - **Smart Follow Mode**: Intelligent log tailing with dynamic `F:Pause` / `F:Follow` feedback.
+  - **Toggleable Panels**: GPU, CPU/RAM, log, and hint bar can each be toggled on/off with a single keypress.
 - **Background Watcher**: `ollama_watcher.py` logs processing service with systemd integration.
 - **Reporting & Stats**: `ollama_report.py` and `ollama_stats.py` for inference and hardware analysis.
 - **Utility Scripts**:
@@ -22,6 +24,7 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
 
 `watch-ollama` provides a rich, color-coded terminal interface for monitoring your local LLM stack:
 
+AMD GPU example (`tool:amd-smi`):
 ```text
 === OLLAMA  parallel:1  tool:amd-smi ===
   qwen3.6-35b (22.4 GB | 100% GPU / 0% CPU)
@@ -41,7 +44,20 @@ dependencies without using recurrent connections.
 
 [GENERATION FINISHED] [LATENCY: 850ms] [GEN: 45 tokens | 52.9 t/s] [PP: 12 tokens | 180.2 pp/s]
 --------------------------------------------------------------------------------
-[UP/DOWN] Scroll | [F] Follow:ON | [G] GPU:ON | [C] CPU:ON | [L] Log:ON | [Q] Quit
+[FOLLOWING] (Line 542/542) (G:GPU C:CPU L:Log H:Hint T:Tool | F:Follow | Q:Quit)  🌡  output
+```
+
+NVIDIA GPU example (`tool:nvidia-smi`):
+```text
+=== OLLAMA  parallel:1  tool:nvidia-smi ===
+  llama3:8b (4.7 GB | 100% GPU / 0% CPU)
+    └ ctx:8192 | 8B | Q4_K_M
+
+CPU:  8% 42°C | RAM: 9/32G | GPU:65°C | SSD: 37°C
+
+--------------------------------------------------------------------------------
+...
+[FOLLOWING] (Line 98/98) (G:GPU C:CPU L:Log H:Hint T:Tool | F:Follow | Q:Quit)  🌡  output
 ```
 
 ## Screenshots & Video
@@ -95,26 +111,65 @@ The uninstaller:
 
 ## Usage
 
-### Interactive Monitoring
+### Interactive Monitoring — `watch-ollama`
 Run the TUI for real-time monitoring:
 ```bash
 watch-ollama
 ```
 
-### Generating Modelfiles
+The TUI is split into two panels separated by a reverse-video divider:
+
+| Panel | Contents |
+|-------|----------|
+| **Top — Telemetry** | Ollama header, active models with VRAM/ctx, CPU load & temperature, RAM usage, GPU temperature (when nvidia-smi/amd-smi is present), extra sensor readings |
+| **Bottom — Log** | Scrollable view of `ollama_readable.log` with color-coded roles, thought blocks, and generation metrics |
+
+#### Keyboard & Mouse shortcuts
+
+| Key / Action | Effect |
+|---|---|
+| `↑` / `↓` | Scroll log one step at a time |
+| `Page Up` / `Page Down` | Scroll log one screen at a time |
+| Mouse wheel | Scroll log (most terminals) |
+| `F` | Toggle **Follow** mode (auto-scroll to newest line) |
+| `G` | Toggle GPU panel on/off |
+| `C` | Toggle CPU/RAM/temp line on/off |
+| `L` | Toggle log panel on/off |
+| `H` | Toggle hint bar on/off |
+| `T` | Cycle GPU tool: `auto` → `nvidia-smi` → `amd-smi` → `rocm-smi` → `none` → … |
+| `Q` / `Ctrl-C` / `Esc` | Quit |
+
+> `T` cycles the GPU tool and persists the choice to `ollama.conf` — useful when you want to force a specific SMI tool or disable the GPU panel entirely.
+
+#### Status bar indicators
+
+```
+[FOLLOWING] (Line 120/542) (G:GPU C:CPU L:Log H:Hint T:Tool | F:Follow | Q:Quit)  🌡  output
+```
+
+- **🌡** — thermometer tinted blue/green/yellow/orange/red based on the hottest sensor reading across CPU, GPU, and all detected hardware.
+- **⚠️** — appears when a background error is active (e.g. Ollama unreachable, log tail stopped).
+- **`output` / `idle`** — green when log traffic was seen in the last 2 seconds, yellow otherwise.
+- **Terminal title** — dynamically updated with a colored square (🟦🟩🟨🟧🟥) to reflect system heat at a glance.
+
+### Generating Modelfiles — `make-modelfile`
 Use the interactive tool to create custom Modelfiles from your GGUF models:
 ```bash
 make-modelfile
 # Or, if alias not set:
 python3 ~/.ollama-watch-tool/scripts/make-modelfile.py
 ```
+Scans `~/models` and the current directory for `.gguf` files, prompts for context length and an optional system prompt, and writes a ready-to-use `Modelfile-<name>`.
 
-### Switching GPU Backends
+### Switching GPU Backends — `switch-gpu`
+Toggles Ollama between the ROCm and Vulkan backends by writing a systemd drop-in and restarting the service:
 ```bash
-switch-gpu [vulkan|rocm|status]
+switch-gpu vulkan   # switch to Vulkan backend
+switch-gpu rocm     # switch to ROCm backend
+switch-gpu status   # show current backend
 ```
 
-### Server Configuration
+### Server Configuration — `setup-ollama`
 Configure the Ollama bind address and port interactively (defaults: `0.0.0.0:11435`):
 ```bash
 setup-ollama
@@ -123,16 +178,34 @@ Or pass values directly:
 ```bash
 setup-ollama 0.0.0.0 11435
 ```
-This writes an `ollama.conf` file alongside the scripts so that `watch-ollama` automatically connects to the correct address.
+This writes an `ollama.conf` file alongside the scripts so that `watch-ollama` automatically connects to the correct address. It also configures systemd drop-ins for `OLLAMA_HOST` and `OLLAMA_DEBUG=2` logging to `/var/log/ollama.log`.
 
 > **Note on port**: Ollama's built-in default is `11434`. This project defaults to `11435` to allow running a custom instance alongside a system-managed one. Adjust as needed.
+
+### Updating Ollama — `update-ollama`
+Downloads the latest Ollama release and restarts the service:
+```bash
+update-ollama
+```
+
+### Log Reports — `ollama-report` / `ollama-stats`
+Parse `/var/log/ollama.log` for human-readable summaries:
+
+```bash
+ollama-report   # hardware detection, model loading info, and per-conversation transcript with latency/token-speed
+ollama-stats    # token throughput and performance metrics per request
+```
 
 ## System Requirements
 - **OS**: Ubuntu Linux (or systemd-based Linux distributions)
 - Python 3.x
 - Ollama
-- `amd-smi` (for AMD GPU monitoring)
 - `systemd` (required for background watcher)
+- **GPU monitoring** (install whichever matches your hardware):
+  - `nvidia-smi` — NVIDIA GPUs (ships with the NVIDIA driver)
+  - `amd-smi` — AMD GPUs (ships with the ROCm stack)
+  - `rocm-smi` — AMD GPUs (legacy ROCm tool, used when `amd-smi` is absent)
+  - If none are installed, the GPU panel is hidden automatically (`tool:none`)
 
 ## Better Together
 
