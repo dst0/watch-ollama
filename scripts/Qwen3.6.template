@@ -28,6 +28,11 @@ value
 {{- if eq .Role "user" }}<|im_start|>user
 {{ .Content }}<|im_end|>
 {{ else if eq .Role "assistant" }}<|im_start|>assistant
+{{ if .Thinking }}
+<think>
+{{ .Thinking }}
+</think>
+{{ end }}
 {{ if .Content }}{{ .Content }}
 {{- else if .ToolCalls }}<tool_call>
 {{ range .ToolCalls }}
@@ -49,3 +54,10 @@ value
 {{- if and (ne .Role "assistant") $last }}<|im_start|>assistant
 {{ end }}
 {{- end }}"""
+PARAMETER num_thread 4
+PARAMETER num_batch 512
+PARAMETER num_ctx 32768
+PARAMETER num_predict -1
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
