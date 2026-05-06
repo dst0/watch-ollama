@@ -23,7 +23,7 @@ for i in "${!CTX_VALUES[@]}"; do
     ctx="${CTX_VALUES[$i]}"
     label="${CTX_LABELS[$i]}"
     for batch in "${BATCH_VALUES[@]}"; do
-        outfile="$SCRIPT_DIR/Qwen3.6.${label}.batch_${batch}.modelfile"
+        outfile="$SCRIPT_DIR/Qwen3.6.${label}_batch_${batch}.modelfile"
         sed \
             -e "s/{num_ctx}/${ctx}/g" \
             -e "s/{num_batch}/${batch}/g" \
@@ -56,12 +56,12 @@ for model in $MODELS; do
     for i in "${!CTX_VALUES[@]}"; do
         label="${CTX_LABELS[$i]}"
         for batch in "${BATCH_VALUES[@]}"; do
-            variant="${base_model}:${label}-batch_${batch}"
+            variant="${base_model}:${label}_batch_${batch}"
             echo "Creating $variant ..."
 
             # Build modelfile: FROM line + concrete variant template
             echo "$FROM_LINE" > "$TMPFILE"
-            cat "$SCRIPT_DIR/Qwen3.6.${label}.batch_${batch}.modelfile" >> "$TMPFILE"
+            cat "$SCRIPT_DIR/Qwen3.6.${label}_batch_${batch}.modelfile" >> "$TMPFILE"
 
             if ! ollama create "$variant" -f "$TMPFILE"; then
                 echo "WARNING: failed to create model $variant, skipping." >&2
