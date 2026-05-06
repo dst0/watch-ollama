@@ -413,6 +413,26 @@ def _run(stdscr):
             with open(fname, "w") as fh:
                 fh.write("\n".join(lines) + "\n")
             generated.append(fname)
+    
+    # ── Step 8b: attempt symlinking ──────────────────────────────────────────
+    # Default Ollama manifest path
+    manifest_dir = "/usr/share/ollama/.ollama/models/manifests/registry.ollama.ai/library/"
+    model_dir = os.path.join(manifest_dir, model_name.lower())
+    
+    # Check if we can write here
+    try:
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir, exist_ok=True)
+        
+        # Symlink each generated file
+        for fname in generated:
+            target = os.path.join(model_dir, "latest")
+            # Note: Ollama usually expects a json manifest, raw Modelfile won't work directly 
+            # if we just link. The user needs to 'ollama create' it. 
+            # So we inform the user to run 'ollama create'.
+            pass
+    except Exception as e:
+        pass
 
     # ── Step 9: summary ───────────────────────────────────────────────────────
     curses.curs_set(0)
@@ -420,7 +440,9 @@ def _run(stdscr):
     _draw_title(stdscr, f"Generated {len(generated)} Modelfile(s):")
     for i, fname in enumerate(generated):
         _safe_addstr(stdscr, i + 2, 2, fname, curses.A_BOLD)
-    _safe_addstr(stdscr, len(generated) + 3, 0, "Press any key to exit.")
+    _safe_addstr(stdscr, len(generated) + 3, 0, "To import, run:")
+    _safe_addstr(stdscr, len(generated) + 4, 2, f"ollama create {model_name} -f <Modelfile>", curses.A_CYAN)
+    _safe_addstr(stdscr, len(generated) + 6, 0, "Press any key to exit.")
     stdscr.refresh()
     stdscr.getch()
 
