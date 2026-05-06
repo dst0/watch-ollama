@@ -10,6 +10,7 @@ from collections import deque
 import urllib.request
 import json
 import re
+import sys
 
 # Resolve paths relative to this script so the tool works for any user/install location
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
@@ -145,7 +146,6 @@ def get_system_temps():
     max_sys_temp = 0.0
     try:
         output = subprocess.check_output(["sensors", "-j"], text=True, errors="replace", stderr=subprocess.DEVNULL)
-        import json
         data = json.loads(output)
         for adapter, sensors_dict in data.items():
             if adapter == "Adapter": continue
@@ -872,7 +872,7 @@ def _get_model_params(model_name):
                     short_name = p.replace("temperature", "temp").replace("num_", "")
                     param_list.append(f"{short_name}:{params[p]}")
             
-            result = " | " + " ".join(param_list)
+            result = (" | " + " ".join(param_list)) if param_list else ""
             _model_params_cache[model_name] = (now, result)
             return result
 
@@ -893,7 +893,7 @@ def main(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(1)
     stdscr.keypad(True)
-    stdscr.timeout(16)
+    stdscr.timeout(0)  # non-blocking getch(); timing is handled by render_event.wait()
     
     # Enable mouse events for scrolling
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
@@ -1220,7 +1220,6 @@ def main(stdscr):
             
             log_active = (time.time() - last_log_update < 2.0)
             log_text = " output" if log_active else " idle"
-            import sys
             sys.stdout.write(f"\033]0;👀 Watch Ollama {t_mark}{e_part}{log_text}\007")
             sys.stdout.flush()
 
