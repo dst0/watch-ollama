@@ -40,3 +40,7 @@ for model in $MODELS; do
         echo "WARNING: failed to create model $model, skipping." >&2
     fi
 done
+
+echo "Models updated. Restarting services..."
+sudo systemctl restart ollama ollama-watcher --no-pager
+echo "Services restarted."
