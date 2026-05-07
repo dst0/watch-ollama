@@ -594,19 +594,26 @@ def apply_input(stdscr, keys, scroll_pos, auto_scroll, log_line_count, log_h):
                     auto_scroll = False
                     changed = True
             elif key == curses.KEY_NPAGE:
-                old_pos = scroll_pos
-                scroll_pos += log_h
-                if scroll_pos >= max_scroll:
-                    scroll_pos = max_scroll
-                    # Only auto-resume if we actually moved TO hit the bottom
-                    if old_pos < max_scroll:
-                        auto_scroll = True
-                else:
-                    auto_scroll = False
-                if scroll_pos != old_pos:
-                    changed = True
-            elif key == ord('f') or key == ord('F'):
-                auto_scroll = not auto_scroll
+               old_pos = scroll_pos
+               scroll_pos += log_h
+               if scroll_pos >= max_scroll:
+                   scroll_pos = max_scroll
+                   # Only auto-resume if we actually moved TO hit the bottom
+                   if old_pos < max_scroll:
+                       auto_scroll = True
+               else:
+                   auto_scroll = False
+               if scroll_pos != old_pos:
+                   changed = True
+            elif key == curses.KEY_HOME:
+               scroll_pos = 0
+               auto_scroll = False
+               changed = True
+            elif key == curses.KEY_END:
+               scroll_pos = max_scroll
+               auto_scroll = True
+               changed = True
+            elif key == ord('f') or key == ord('F'):                auto_scroll = not auto_scroll
                 changed = True
             elif key == ord('g') or key == ord('G'):
                 save_setting("show_gpu", not SETTINGS["show_gpu"])
@@ -1178,14 +1185,14 @@ def main(stdscr):
         curr_term_size = (max_y, max_x)
         if curr_term_size != last_term_size:
             stdscr.clear() # Force full redraw on resize
-        
+
         smi_snapshot, cpu_temp, curr_smi_ver = get_smi_snapshot()
         render_width = max(1, max_x - 1)
         active_errors = get_error_lines(render_width)
+        error_h = min(2, len(active_errors))
         curr_error_sig = tuple(active_errors)
         with log_lock:
             curr_log_ver = log_version
-
         # ── LOG LINES (cached) ───────────────────────────────────────────
         # Rebuild/fetch logs BEFORE apply_input so layout is accurate.
         visible_log_lines, log_snapshot, total_count = build_visible_log_lines(render_width)
@@ -1422,10 +1429,10 @@ def main(stdscr):
                     except curses.error:
                         pass
                 else:
-                    # Clear empty log area
+                    # Clear empty log area only if it was potentially occupied before
+                    # Using a simple space fill can be faster than clrtoeol in many curses implementations
                     try:
-                        stdscr.move(smi_lines + 1 + i, 0)
-                        stdscr.clrtoeol()
+                        stdscr.addstr(smi_lines + 1 + i, 0, " " * render_width)
                     except curses.error:
                         pass
         

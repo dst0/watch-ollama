@@ -1,0 +1,8 @@
+[Unit]
+Description=Rotate Ollama readable logs
+
+[Service]
+Type=oneshot
+ExecStart=/home/dst/dev/watch-ollama/scripts/rotate-logs.sh
+User=dst
+Group=dst
