@@ -411,14 +411,7 @@ def render_ansi_line(stdscr, y, x, line, max_width):
 def build_visible_log_lines(width):
     """Return (visible_lines, log_snapshot, total_count).
 
-    The result is cached by (width, log_version) so the expensive per-line
-    wrap is only recomputed when the terminal width changes or new log data
-    has arrived.  The cache is written and read exclusively from the main
-    thread, so no additional locking is required for the cache variables.
-
-    The log_version is read inside log_lock (the only way to get a consistent
-    value), but on a cache hit we return immediately after releasing the lock
-    without copying the deque.
+    visible_lines elements are (absolute_line_idx, segment_text).
     """
     global _visible_log_cache, _visible_log_cache_key
     # Fast path: check under the lock but avoid copying the deque when cached.
@@ -432,9 +425,12 @@ def build_visible_log_lines(width):
         total_count = log_lines_total_count
     # Build wrapped lines outside the lock — this is the expensive part.
     visible = []
+    # The first line in log_snapshot has absolute index: total_count - len(log_snapshot)
+    first_abs_idx = total_count - len(log_snapshot)
     for idx, line in enumerate(log_snapshot):
+        abs_idx = first_abs_idx + idx
         for segment in wrap_render_line(line, width):
-            visible.append((idx, segment))
+            visible.append((abs_idx, segment))
     result = (visible, log_snapshot, total_count)
     _visible_log_cache = result
     _visible_log_cache_key = cache_key
@@ -1004,6 +1000,7 @@ def main(stdscr):
     last_scroll = -1
     last_auto = None
     visible_log_lines: list = []
+    last_visible_lines: list = []
     log_snapshot: list = []
     input_was_active = False  # used to shorten the idle wait after keypresses
 
@@ -1034,6 +1031,10 @@ def main(stdscr):
         with log_lock:
             curr_log_ver = log_version
 
+        # ── LOG LINES (cached) ───────────────────────────────────────────
+        # Rebuild/fetch logs BEFORE apply_input so layout is accurate.
+        visible_log_lines, log_snapshot, total_count = build_visible_log_lines(render_width)
+
         # ── LAYOUT (accurate dimensions for input) ───────────────────────
         max_smi_lines = max(1, max_y // 2)
         observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
@@ -1056,6 +1057,24 @@ def main(stdscr):
         error_h = min(2, len(active_errors))
         log_h = max(1, max_y - smi_lines - error_h - 2)
 
+        # ── DRIFT COMPENSATION ───────────────────────────────────────────
+        # If we are paused, try to stay on the same absolute content even
+        # if the deque dropped lines from the top.
+        if not auto_scroll and visible_log_lines and last_scroll >= 0:
+            # Find the absolute line index and segment offset we were on.
+            if last_scroll < len(last_visible_lines):
+                target_abs_idx, target_segment = last_visible_lines[last_scroll]
+                # Look for this same absolute content in the new list.
+                found = False
+                for i, (abs_idx, segment) in enumerate(visible_log_lines):
+                    if abs_idx == target_abs_idx and segment == target_segment:
+                        scroll_pos = i
+                        found = True
+                        break
+                # If content is gone (dropped from deque), clamp to top.
+                if not found and target_abs_idx < (visible_log_lines[0][0] if visible_log_lines else 0):
+                    scroll_pos = 0
+
         # Apply input using the accurate layout.
         scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
             keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
@@ -1075,10 +1094,8 @@ def main(stdscr):
             render_dirty = True
 
         if not render_dirty:
+            last_visible_lines = visible_log_lines
             continue
-
-        # ── LOG LINES (cached) ───────────────────────────────────────────
-        visible_log_lines, log_snapshot, total_count = build_visible_log_lines(render_width)
 
         # Re-clamp scroll with the accurate wrapped-line count.
         max_scroll = max(0, len(visible_log_lines) - log_h)
@@ -1260,6 +1277,7 @@ def main(stdscr):
         last_error_sig = curr_error_sig
         last_scroll = scroll_pos
         last_auto = auto_scroll
+        last_visible_lines = visible_log_lines
         render_dirty = False
 
 if __name__ == "__main__":
