@@ -181,6 +181,7 @@ def get_cpu_temp():
 
 def get_system_temps():
     temps = []
+    temp_dict = {}
     # This will be used as the overall system 'cpu_temp' for indicators
     max_sys_temp = 0.0
     try:
@@ -210,19 +211,21 @@ def get_system_temps():
                                 short_adapter = short_adapter.replace(old, new)
                             
                             # Hide primary sensors from the "System temps" list to keep it clean
-                            if short_adapter in ["CPU", "K10", "GPU"]:
+                            if short_adapter in ["CPU", "K10", "GPU", "SYS", "SYSTZ", "ACPI", "ACPITZ"]:
                                 continue
 
-                            # Simplify sensor: only keep numeric suffix if present
-                            short_sensor = sensor_name.replace("temp", "").replace("Sensor", "").replace("Composite", "").upper()
-                            numeric_part = "".join([c for c in short_sensor if c.isdigit()])
-
-                            if numeric_part:
-                                temps.append(f"{short_adapter}_{numeric_part}:{temp_val:.0f}°C")
-                            else:
-                                temps.append(f"{short_adapter}:{temp_val:.0f}°C")
+                            # Simplify adapter name (remove ugly trailing bus IDs like _0_200:00 or -pci)
+                            label = short_adapter.split('_')[0]
+                            label = label.split('-')[0]
+                            
+                            # Use a dict to deduplicate by generic label (keep the highest temp for that device type)
+                            temp_dict[label] = max(temp_dict.get(label, 0.0), temp_val)
     except Exception:
         pass
+    
+    # Sort labels to keep the UI consistent
+    for label in sorted(temp_dict.keys()):
+        temps.append(f"{label}:{temp_dict[label]:.0f}°C")
     
     if max_sys_temp == 0.0:
         max_sys_temp = get_cpu_temp()
@@ -264,6 +267,10 @@ last_log_update = time.time()
 # loop can detect changes without expensive content comparisons.
 log_version = 0          # bumped inside log_lock whenever log_lines is updated
 smi_version = 0          # bumped inside smi_lock whenever smi_text is updated
+
+# Top-level cache for the visible log area
+_visible_log_cache = None
+_visible_log_cache_key = None
 
 # Event set by background threads to wake the main-loop idle wait.
 render_event = threading.Event()
@@ -484,20 +491,28 @@ def build_visible_log_lines(width):
 
     visible_lines elements are (absolute_line_idx, segment_text, entry).
     """
+    global _visible_log_cache, _visible_log_cache_key
+
     with log_lock:
         log_snapshot = list(log_lines)
         total_count = log_lines_total_count
-    
+        v = log_version
+
+    # Return cached result if width and version match
+    key = (width, v)
+    if _visible_log_cache_key == key:
+        return _visible_log_cache
+
     # Build wrapped lines using the per-line cache
     visible = []
     first_abs_idx = total_count - len(log_snapshot)
-    
+
     for idx, line in enumerate(log_snapshot):
         abs_idx = first_abs_idx + idx
         entry = get_cached_log_entry(abs_idx, line, width, log_snapshot, idx)
         for segment in entry["wrapped"][width]:
             visible.append((abs_idx, segment, entry))
-            
+
     # Cleanup log_cache periodically to remove absolute indices that are no longer in the deque
     if len(log_cache) > LOG_HISTORY_MAXLEN * 1.5:
         # Only keep indices that are within the current range
@@ -505,9 +520,11 @@ def build_visible_log_lines(width):
         stale_indices = [idx for idx in log_cache if idx not in current_indices]
         for idx in stale_indices:
             log_cache.pop(idx, None)
-            
-    return (visible, log_snapshot, total_count)
 
+    result = (visible, log_snapshot, total_count)
+    _visible_log_cache = result
+    _visible_log_cache_key = key
+    return result
 def collect_input(stdscr):
     keys = []
     while True:
@@ -980,7 +997,7 @@ def _get_model_params(model_name):
             for line in param_str.splitlines():
                 parts = line.strip().split(None, 1)
                 if len(parts) == 2:
-                    params[parts[0]] = params[parts[1]]
+                    params[parts[0]] = parts[1]
 
             param_list = []
             for p in params_of_interest:

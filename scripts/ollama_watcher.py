@@ -34,12 +34,12 @@ def format_text(text):
     # 2. Convert common chat tokens to readable markers
     # Supports ChatML, Llama3-style, etc.
     replacements = {
-        '<|im_start|>system': '\n### SYSTEM',
-        '<|im_start|>user': '\n### USER',
-        '<|im_start|>assistant': '\n### ASSISTANT',
-        '<|start_header_id|>system<|end_header_id|>\n\n': '\n### SYSTEM\n',
-        '<|start_header_id|>user<|end_header_id|>\n\n': '\n### USER\n',
-        '<|start_header_id|>assistant<|end_header_id|>\n\n': '\n### ASSISTANT\n',
+        '<|im_start|>system': '### SYSTEM',
+        '<|im_start|>user': '### USER',
+        '<|im_start|>assistant': '### ASSISTANT',
+        '<|start_header_id|>system<|end_header_id|>\n\n': '### SYSTEM\n',
+        '<|start_header_id|>user<|end_header_id|>\n\n': '### USER\n',
+        '<|start_header_id|>assistant<|end_header_id|>\n\n': '### ASSISTANT\n',
         '<|im_end|>': '\n',
         '<|endoftext|>': '\n',
         '<|eot_id|>': '\n',
@@ -72,7 +72,12 @@ def format_text(text):
             text = new_part
 
     # 6. Final spacing refinement
-    text = re.sub(r'\n(### (?:SYSTEM|USER|ASSISTANT))(?=\S)', r'\n\1\n', text)
+    # Ensure role markers have exactly two newlines before and one after for clarity
+    text = re.sub(r'\n*[ \t]*(### (?:SYSTEM|USER|ASSISTANT))[ \t]*\n*', r'\n\n\1\n', text)
+
+    # Deduplicate consecutive identical role markers (e.g., redundant ### SYSTEM)
+    text = re.sub(r'(### (?:SYSTEM|USER|ASSISTANT))\n+(?=\1)', '', text)
+
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip("\n")
 

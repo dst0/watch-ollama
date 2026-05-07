@@ -105,7 +105,7 @@ class LogSanitizationTests(unittest.TestCase):
     def test_tui_chat_history_content_uses_default_color(self):
         self.assertEqual(
             TUI.render_attr_for_log_line(
-                1, "normal prompt content", ["### USER", "normal prompt content"], color_pair=lambda n: n
+                {"in_thought": False}, "normal prompt content", color_pair=lambda n: n
             ),
             0,
         )
