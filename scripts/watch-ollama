@@ -1048,7 +1048,9 @@ def main(stdscr):
         # new data or a short timeout elapses so we catch terminal resizes
         # and key-repeat bursts promptly.
         if not render_dirty:
-            wait_s = IDLE_WAIT_AFTER_INPUT if input_was_active else IDLE_WAIT_DEFAULT
+            # If the log was recently updated, use a very short wait for smoothness
+            is_log_active = (time.time() - last_log_update < 1.0)
+            wait_s = 0.02 if is_log_active else (IDLE_WAIT_AFTER_INPUT if input_was_active else IDLE_WAIT_DEFAULT)
             render_event.wait(timeout=wait_s)
             render_event.clear()
 
@@ -1062,6 +1064,9 @@ def main(stdscr):
         # ── STATE SNAPSHOT ───────────────────────────────────────────────
         max_y, max_x = stdscr.getmaxyx()
         curr_term_size = (max_y, max_x)
+        if curr_term_size != last_term_size:
+            stdscr.clear() # Force full redraw on resize
+        
         smi_snapshot, cpu_temp, curr_smi_ver = get_smi_snapshot()
         render_width = max(1, max_x - 1)
         active_errors = get_error_lines(render_width)
@@ -1087,7 +1092,13 @@ def main(stdscr):
             smi_reset_counter -= 1
 
         reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
-        smi_lines = min(max_smi_lines, max(reserved_smi_lines, observed_smi_lines))
+        # ONLY ALLOW GROWTH if we don't have a reservation yet, or if it's a reset.
+        # Otherwise, stick to the reservation to prevent jumping.
+        if reserved_smi_lines == 0:
+            smi_lines = min(max_smi_lines, max(15, observed_smi_lines))
+        else:
+            smi_lines = reserved_smi_lines
+        
         reserved_smi_lines_by_height[max_y] = smi_lines
 
         error_h = min(2, len(active_errors))
