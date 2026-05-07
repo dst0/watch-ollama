@@ -82,7 +82,7 @@ def save_setting(key, value):
         if line.strip().startswith(key_upper + "="):
             new_lines.append(f"{key_upper}={value}")
             found = True
-    else:
+        else:
             new_lines.append(line)
     
     if not found:
@@ -644,7 +644,7 @@ def set_error(key, message):
     with error_lock:
         if message:
             error_messages[key] = sanitize_render_text(message)
-    else:
+        else:
             error_messages.pop(key, None)
     # Wake the main loop so the error banner updates immediately.
     # Called outside error_lock to keep the call site simple; render_event
@@ -713,7 +713,7 @@ def poll_smi():
                 hw_lines = output.splitlines()
             except Exception:
                 hw_lines = [f"\033[31m({tool} unavailable)\033[0m"]
-    else:
+        else:
             hw_lines = ["\033[90m(no GPU tool detected)\033[0m"]
 
         # CPU load and temp
@@ -1047,7 +1047,6 @@ def toggle_mouse(stdscr, enable):
         print("\033[?1003l", end="")
     stdscr.refresh()
 
-
     
     # Setup Colors
     curses.start_color()
@@ -1090,7 +1089,7 @@ def toggle_mouse(stdscr, enable):
             x = max(0, (max_x - len(visible_line)) // 2)
             render_ansi_line(stdscr, y, x, line, max_x - 1)
 
-    stdscr.refresh()
+        stdscr.refresh()
         key = stdscr.getch()
         if key == 3 or key == ord('q') or key == ord('Q') or key == 27:
             return
@@ -1170,7 +1169,7 @@ def toggle_mouse(stdscr, enable):
         # Otherwise, stick to the reservation to prevent jumping.
         if reserved_smi_lines == 0:
             smi_lines = min(max_smi_lines, max(15, observed_smi_lines))
-    else:
+        else:
             smi_lines = reserved_smi_lines
         
         reserved_smi_lines_by_height[max_y] = smi_lines
@@ -1222,7 +1221,7 @@ def toggle_mouse(stdscr, enable):
         max_scroll = max(0, len(visible_log_lines) - log_h)
         if auto_scroll:
             scroll_pos = max_scroll
-    else:
+        else:
             scroll_pos = min(max(0, scroll_pos), max_scroll)
 
         # ── RENDER ───────────────────────────────────────────────────────
@@ -1419,7 +1418,7 @@ def toggle_mouse(stdscr, enable):
             sys.stdout.write(f"\033]0;👀 Watch Ollama {t_mark}{e_part}{log_text}\007")
             sys.stdout.flush()
 
-    stdscr.refresh()
+        stdscr.refresh()
 
         # ── UPDATE TRACKING ──────────────────────────────────────────────
         last_term_size = curr_term_size
