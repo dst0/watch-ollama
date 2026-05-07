@@ -816,9 +816,9 @@ def poll_smi():
         header = f"\033[1;36m=== OLLAMA  parallel:{num_parallel}  tool:{tool} ===\033[0m"
         full_smi_lines.append(header)
         full_smi_lines.extend(model_lines)
-        full_smi_lines.append("")
         
         if SETTINGS["show_cpu"]:
+            full_smi_lines.append("") # Spacer before CPU
             cpu_pct = f"{cpu_load:2.0f}%"
             cpu_freq = get_cpu_freq()
             freq_str = ""
@@ -837,9 +837,9 @@ def poll_smi():
             if sys_temps:
                 cpu_line += " | " + " ".join(sys_temps)
             full_smi_lines.append(cpu_line)
-            full_smi_lines.append("")
             
         if SETTINGS["show_gpu"]:
+            full_smi_lines.append("") # Spacer before GPU
             full_smi_lines.extend(hw_lines)
             
         set_smi_text(full_smi_lines, cpu_temp=cpu_temp)
@@ -1191,23 +1191,26 @@ def main(stdscr):
         visible_log_lines, log_snapshot, total_count = build_visible_log_lines(render_width)
 
         # ── LAYOUT (accurate dimensions for input) ───────────────────────
-        max_smi_lines = max(1, max_y // 2)
-        observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
+        # Allow SMI to take more space if needed, especially if log is hidden
+        if SETTINGS["show_log"]:
+            max_smi_lines = max(5, (max_y * 2) // 3) # Up to 2/3 of screen
+        else:
+            max_smi_lines = max(5, max_y - error_h - 2)
 
-        # Keep the top telemetry panel from jumping when Ollama briefly
-        # changes model/prompt rows.
-        if len(smi_snapshot) != last_snapshot_len:
-            last_snapshot_len = len(smi_snapshot)
+        observed_smi_lines = len(smi_snapshot) if smi_snapshot else 0
 
         if smi_reset_counter > 0:
             reserved_smi_lines_by_height.clear()
             smi_reset_counter -= 1
 
         reserved_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
-        # ONLY ALLOW GROWTH if we don't have a reservation yet, or if it's a reset.
-        # Otherwise, stick to the reservation to prevent jumping.
         if reserved_smi_lines == 0:
-            smi_lines = min(max_smi_lines, max(15, observed_smi_lines))
+            if SETTINGS["show_gpu"]:
+                # Reserve at least 12 lines if GPU is enabled to avoid jumping
+                smi_lines = min(max_smi_lines, max(12, observed_smi_lines))
+            else:
+                # Tight fit if only models/CPU are shown
+                smi_lines = min(max_smi_lines, observed_smi_lines)
         else:
             smi_lines = reserved_smi_lines
         
@@ -1264,8 +1267,10 @@ def main(stdscr):
         scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
             stdscr, keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
         )
-        if smi_changed:
-            smi_reset_counter = SMI_RESET_FRAMES  # clear reservations to allow panel to shrink
+        if smi_changed or input_changed:
+            stdscr.clear() # Wipe clean on state change to prevent artifacts
+            if smi_changed:
+                smi_reset_counter = SMI_RESET_FRAMES  # clear reservations to allow panel to shrink
         input_was_active = bool(input_changed)
 
         # ── DIRTY CHECK ──────────────────────────────────────────────────
@@ -1423,14 +1428,6 @@ def main(stdscr):
                         stdscr.clrtoeol()
                     except curses.error:
                         pass
-        else:
-            # Explicitly clear the log area if hidden to prevent ghost lines
-            for i in range(max_y - smi_lines - error_h - 1):
-                try:
-                    stdscr.move(smi_lines + 1 + i, 0)
-                    stdscr.clrtoeol()
-                except curses.error:
-                    pass
         
         # Render Error Section
         error_start = max_y - 1 - error_h
