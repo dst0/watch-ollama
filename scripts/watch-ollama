@@ -316,12 +316,35 @@ def sanitize_render_text(text):
     return CONTROL_CHARS_RE.sub("", text)
 
 def wrap_render_line(line, width):
-    # This is now a lower-level helper; log lines use the cache via get_cached_log_entry
-    if width <= 1:
-        return [line[:1]]
-    if not line:
-        return [""]
-    return [line[i:i + width] for i in range(0, len(line), width)]
+    if width <= 4:
+        return [line[:width]]
+    if not line.strip():
+        return [line] if line else [""]
+
+    # Detect prefix (indentation or history marker)
+    prefix = ""
+    if line.startswith("| "):
+        prefix = "| "
+    elif line.startswith("  "):
+        # Match leading whitespace up to width/3
+        ws_match = re.match(r"^(\s+)", line)
+        if ws_match:
+            prefix = ws_match.group(1)[:width//3]
+
+    content_width = width - len(prefix)
+    if content_width <= 0:
+        return [line[:width]]
+
+    first_segment = line[:width]
+    remaining = line[width:]
+    
+    if not remaining:
+        return [first_segment]
+    
+    segments = [first_segment]
+    for i in range(0, len(remaining), content_width):
+        segments.append(prefix + remaining[i:i + content_width])
+    return segments
 
 def role_color_pair_for_line(line):
     for marker, color_pair in ROLE_MARKERS.items():
@@ -1207,14 +1230,35 @@ def main(stdscr):
                 target_abs_idx, target_segment, _ = last_visible_lines[last_scroll]
                 # Look for this same absolute content in the new list.
                 found = False
+                best_fallback = -1
+                min_idx_diff = float('inf')
+
                 for i, (abs_idx, segment, _) in enumerate(visible_log_lines):
-                    if abs_idx == target_abs_idx and segment == target_segment:
-                        scroll_pos = i
-                        found = True
-                        break
-                # If content is gone (dropped from deque), clamp to top.
-                if not found and target_abs_idx < (visible_log_lines[0][0] if visible_log_lines else 0):
-                    scroll_pos = 0
+                    if abs_idx == target_abs_idx:
+                        if segment == target_segment:
+                            scroll_pos = i
+                            found = True
+                            break
+                        elif best_fallback == -1:
+                            # If segment changed (due to resize), stay on the same absolute line
+                            best_fallback = i
+                    
+                    # Track the closest available line in case our line was dropped
+                    diff = abs(abs_idx - target_abs_idx)
+                    if diff < min_idx_diff:
+                        min_idx_diff = diff
+                        if best_fallback == -1 or diff == 0:
+                            best_fallback = i
+
+                if not found:
+                    if best_fallback != -1:
+                        scroll_pos = best_fallback
+                    elif visible_log_lines:
+                        # If content is truly gone (dropped from deque), clamp to top or bottom
+                        if target_abs_idx < visible_log_lines[0][0]:
+                            scroll_pos = 0
+                        else:
+                            scroll_pos = max(0, len(visible_log_lines) - log_h)
 
         # Apply input using the accurate layout.
         scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
