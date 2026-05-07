@@ -120,6 +120,27 @@ def get_cpu_usage():
     except Exception:
         return 0.0
 
+def get_cpu_freq():
+    try:
+        freq_files = list(pathlib.Path('/sys/devices/system/cpu').glob('cpu*/cpufreq/scaling_cur_freq'))
+        if not freq_files:
+            return 0.0
+        
+        total_freq = 0
+        count = 0
+        for fpath in freq_files:
+            try:
+                total_freq += int(fpath.read_text().strip())
+                count += 1
+            except (IOError, ValueError):
+                continue
+        
+        if count > 0:
+            return (total_freq / count) / 1000.0  # Average in MHz
+    except Exception:
+        pass
+    return 0.0
+
 def get_ram_usage():
     try:
         with open('/proc/meminfo', 'r') as f:
@@ -704,8 +725,16 @@ def poll_smi():
         
         if SETTINGS["show_cpu"]:
             cpu_pct = f"{cpu_load:2.0f}%"
-            temp_str = f"{cpu_temp:2.0f}°C"
-            cpu_line = f"CPU:{cpu_pct} {temp_str}"
+            cpu_freq = get_cpu_freq()
+            freq_str = ""
+            if cpu_freq > 0:
+                if cpu_freq >= 1000:
+                    freq_str = f" {cpu_freq/1000:.1f}GHz"
+                else:
+                    freq_str = f" {cpu_freq:.0f}MHz"
+            
+            temp_str = f" {cpu_temp:2.0f}°C"
+            cpu_line = f"CPU:{cpu_pct}{freq_str}{temp_str}"
             
             if ram_total > 0:
                 cpu_line += f" | RAM:{ram_used:.1f}/{ram_total:.1f}GiB"

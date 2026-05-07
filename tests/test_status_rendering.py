@@ -69,6 +69,20 @@ class StatusRenderingTests(unittest.TestCase):
         temp = TUI.get_cpu_temp()
         self.assertEqual(temp, 55.0)
 
+    @patch('pathlib.Path.glob')
+    def test_get_cpu_freq(self, mock_glob):
+        # Mock two CPU frequency files
+        cpu0 = MagicMock()
+        cpu1 = MagicMock()
+        mock_glob.return_value = [cpu0, cpu1]
+        
+        # cpu0: 3200000 (3.2 GHz), cpu1: 800000 (0.8 GHz) -> Avg: 2000000 (2.0 GHz)
+        cpu0.read_text.return_value = "3200000\n"
+        cpu1.read_text.return_value = "800000\n"
+        
+        freq = TUI.get_cpu_freq()
+        self.assertEqual(freq, 2000.0)
+
     def test_ansi_color_pair_start_does_not_overwrite_static_pairs(self):
         # Pre-allocated curses pairs used by get_val_color / get_temp_color are
         # 1..6 and 11. The ANSI dynamic allocator must start above 11 so it

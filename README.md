@@ -11,7 +11,7 @@ A comprehensive collection of monitoring, benchmarking, and management tools for
   - **Dynamic Title**: Synchronized color-coded status blocks (🟦, 🟩, 🟨, 🟧, 🟥) in the terminal title bar.
   - **Official Metrics**: Reporting and TUI use official Ollama log-based token metrics (`prompt_eval_count`, `eval_count`) for precise speed and performance measurement.
   - **Smart Follow Mode**: Intelligent log tailing with dynamic `F:Pause` / `F:Follow` feedback.
-  - **Toggleable Panels**: GPU, CPU/RAM, log, and hint bar can each be toggled on/off with a single keypress.
+  - **Toggleable Panels**: GPU, CPU (load, frequency, temp) / RAM, log, and hint bar can each be toggled on/off with a single keypress.
 - **Background Watcher**: `ollama_watcher.py` logs processing service with systemd integration.
 - **Reporting & Stats**: `ollama_report.py` and `ollama_stats.py` for inference and hardware analysis.
 - **Utility Scripts**:
@@ -30,7 +30,8 @@ AMD GPU example (`tool:amd-smi`):
   qwen3.6-35b (22.4 GB | 100% GPU / 0% CPU)
     └ ctx:32768 | 35B | IQ3_S
 
-CPU: 14% 48°C | RAM: 12/64G | GPU: 54°C | SSD: 38°C
+CPU: 14% 3.2GHz 48°C | RAM: 12/64G | GPU: 54°C | SSD: 38°C
+```
 
 --------------------------------------------------------------------------------
 14:20:05 [NEW PROMPT - GENERATION STARTED]
@@ -53,7 +54,8 @@ NVIDIA GPU example (`tool:nvidia-smi`):
   llama3:8b (4.7 GB | 100% GPU / 0% CPU)
     └ ctx:8192 | 8B | Q4_K_M
 
-CPU:  8% 42°C | RAM: 9/32G | GPU:65°C | SSD: 37°C
+CPU:  8% 2.1GHz 42°C | RAM: 9/32G | GPU:65°C | SSD: 37°C
+```
 
 --------------------------------------------------------------------------------
 ...
@@ -150,7 +152,7 @@ The TUI is split into two panels separated by a reverse-video divider. It uses *
 
 | Panel | Contents |
 |-------|----------|
-| **Top — Telemetry** | Ollama header, active models with VRAM/ctx, CPU load & temperature, RAM usage, GPU temperature (when nvidia-smi/amd-smi is present), extra sensor readings. Dynamic height adjustment prevents "jitter" while maintaining a stable view. |
+| **Top — Telemetry** | Ollama header, active models with VRAM/ctx, CPU load, frequency & temperature, RAM usage, GPU temperature (when nvidia-smi/amd-smi is present), extra sensor readings. Dynamic height adjustment prevents "jitter" while maintaining a stable view. |
 | **Bottom — Log** | Scrollable view of `ollama_readable.log` with color-coded roles, thought blocks, and generation metrics |
 
 #### Keyboard & Mouse shortcuts

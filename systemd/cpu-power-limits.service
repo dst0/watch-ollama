@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply CPU Power Limits for Thermal Management
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/dst/dev/watch-ollama/scripts/apply-cpu-limits.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
