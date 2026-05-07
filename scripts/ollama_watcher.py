@@ -86,6 +86,7 @@ def main():
         eval_count = 0
         prompt_start_time = 0
         in_generation = False
+        last_prompt_raw = ""
         
         # Log-based metrics
         log_metrics = {
@@ -120,17 +121,31 @@ def main():
 
             # --- START PROMPT ---
             if "msg=encoded string=" in line:
-                if in_generation:
-                    continue
-
-                # Reset log metrics for new prompt
-                log_metrics = {k: 0 for k in log_metrics}
-                log_metrics['prompt_eval_duration'] = 0.0
-                log_metrics['eval_duration'] = 0.0
-
                 match = re.search(r'msg=encoded string="(.*)" ids=', line)
                 if match:
-                    prompt = decode_go_string(match.group(1))
+                    raw_prompt = match.group(1)
+                    # If this is exactly the same raw prompt as the one we just started,
+                    # it's likely just a duplicate log entry from Ollama's pipeline.
+                    if in_generation and raw_prompt == last_prompt_raw:
+                        continue
+                    
+                    # If we were already in generation, it means we missed the finish signal
+                    # for the previous prompt. Force close it now.
+                    if in_generation:
+                        with open(READABLE_LOG, "a") as out:
+                            out.write(f"\n\n[GENERATION INTERRUPTED BY NEW PROMPT]\n")
+                            out.write(f"{'-'*80}\n")
+                            out.flush()
+                        in_generation = False
+
+                    last_prompt_raw = raw_prompt
+                    
+                    # Reset log metrics for new prompt
+                    log_metrics = {k: 0 for k in log_metrics}
+                    log_metrics['prompt_eval_duration'] = 0.0
+                    log_metrics['eval_duration'] = 0.0
+
+                    prompt = decode_go_string(raw_prompt)
                     formatted_prompt = format_text(prompt)
                     timestamp = time.strftime("%H:%M:%S")
                     
@@ -143,9 +158,9 @@ def main():
                     
                     # Distinguish automated follow-up suggestion requests from Open WebUI
                     if "Suggest 3-5 relevant follow-up questions" in formatted_prompt:
-                        header = f"\n\n==================== {timestamp} [FOLLOW-UP SUGGESTIONS] ====================\n\n"
+                        header = f"\n\n\n{'='*100}\n{timestamp} [FOLLOW-UP SUGGESTIONS]\n{'='*100}\n\n"
                     else:
-                        header = f"\n\n==================== {timestamp} [NEW PROMPT - GENERATION STARTED] ====================\n\n"
+                        header = f"\n\n\n{'='*100}\n{timestamp} [NEW PROMPT - GENERATION STARTED]\n{'='*100}\n\n"
 
                     prompt_start_time = time.time()
                     eval_count = 0
@@ -202,7 +217,7 @@ def main():
                     out.flush()
 
             # --- FINISHED / API METRICS ---
-            if in_generation and '[GIN]' in line and 'POST' in line and any(x in line for x in ['/api/generate', '/api/chat', '/v1/chat/completions']):
+            if in_generation and '[GIN]' in line and 'POST' in line and any(x in line for x in ['/api/generate', '/api/chat', '/v1/chat/completions', '/v1/completions', '/v1/responses']):
                 in_generation = False
                 # Add a brief cooldown to prevent immediate triggers from rapid requests
                 time.sleep(0.2)
