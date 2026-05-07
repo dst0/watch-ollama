@@ -158,9 +158,9 @@ def main():
                     
                     # Distinguish automated follow-up suggestion requests from Open WebUI
                     if "Suggest 3-5 relevant follow-up questions" in formatted_prompt:
-                        header = f"\n\n\n{'='*100}\n{timestamp} [FOLLOW-UP SUGGESTIONS]\n{'='*100}\n\n"
+                        header = f"\n\n{'='*80}\n{timestamp} [FOLLOW-UP SUGGESTIONS]\n{'='*80}\n"
                     else:
-                        header = f"\n\n\n{'='*100}\n{timestamp} [NEW PROMPT - GENERATION STARTED]\n{'='*100}\n\n"
+                        header = f"\n\n{'='*80}\n{timestamp} [NEW PROMPT - GENERATION STARTED]\n{'='*80}\n"
 
                     prompt_start_time = time.time()
                     eval_count = 0

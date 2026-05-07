@@ -240,8 +240,12 @@ def detect_gpu_tool():
     return "none"
 
 # Initialization of log and SMI state
-LOG_HISTORY_MAXLEN = 20000  # retained log lines; lower than original 100000 to cut rebuild cost
+LOG_HISTORY_MAXLEN = 5000  # Reduced for performance; enough for typical session
 log_lines = deque(maxlen=LOG_HISTORY_MAXLEN)
+# Cache for log lines: absolute_idx -> (raw_content, sanitized_content, {width: wrapped_segments}, in_thought)
+# This prevents redundant regex and wrapping calculations on every frame.
+log_cache = {}
+
 log_lines_total_count = 0
 smi_text = ["Loading GPU status..."]
 latest_cpu_temp = 0.0
@@ -263,10 +267,6 @@ smi_version = 0          # bumped inside smi_lock whenever smi_text is updated
 
 # Event set by background threads to wake the main-loop idle wait.
 render_event = threading.Event()
-
-# Wrap-line cache for build_visible_log_lines(); keyed by (width, log_version).
-_visible_log_cache = None
-_visible_log_cache_key = None
 
 # Per-model /api/show param cache: model_name -> (fetch_timestamp, params_str)
 _model_params_cache: dict = {}
@@ -307,7 +307,7 @@ def sanitize_render_text(text):
     return CONTROL_CHARS_RE.sub("", text)
 
 def wrap_render_line(line, width):
-    line = sanitize_render_text(line)
+    # This is now a lower-level helper; log lines use the cache via get_cached_log_entry
     if width <= 1:
         return [line[:1]]
     if not line:
@@ -332,9 +332,46 @@ def line_opens_thought(line):
 def line_closes_thought(line):
     return "</think>" in line or "[/THOUGHT]" in line
 
+def get_cached_log_entry(abs_idx, raw_content, width, log_snapshot, snapshot_offset):
+    """Retrieve or build a cached entry for a log line.
+    
+    Entry format: {
+        "raw": str,
+        "sanitized": str,
+        "wrapped": {width: [segments]},
+        "in_thought": bool
+    }
+    """
+    entry = log_cache.get(abs_idx)
+    
+    # If raw content changed, we must rebuild everything for this absolute index
+    if not entry or entry["raw"] != raw_content:
+        sanitized = sanitize_render_text(raw_content)
+        
+        # Calculate thought state efficiently
+        in_thought = False
+        if line_is_in_thought(snapshot_offset, log_snapshot):
+            in_thought = True
+            
+        entry = {
+            "raw": raw_content,
+            "sanitized": sanitized,
+            "wrapped": {},
+            "in_thought": in_thought
+        }
+        log_cache[abs_idx] = entry
+    
+    # Check if we have the wrapped segments for this specific width
+    if width not in entry["wrapped"]:
+        entry["wrapped"][width] = wrap_render_line(entry["sanitized"], width)
+        
+    return entry
+
 def line_is_in_thought(source_idx, log_snapshot):
+    # This is a bit expensive, but we now cache the result in get_cached_log_entry
     if source_idx < 0 or source_idx >= len(log_snapshot):
         return False
+    # Scan back up to 500 lines to find if we are inside a thought block
     for j in range(source_idx, max(-1, source_idx - 500), -1):
         check_line = sanitize_render_text(log_snapshot[j])
         if line_opens_thought(check_line):
@@ -347,7 +384,7 @@ def line_is_in_thought(source_idx, log_snapshot):
             return False
     return False
 
-def render_attr_for_log_line(source_idx, line, log_snapshot, color_pair=None):
+def render_attr_for_log_line(entry, line, color_pair=None):
     if color_pair is None:
         color_pair = curses.color_pair
 
@@ -358,7 +395,7 @@ def render_attr_for_log_line(source_idx, line, log_snapshot, color_pair=None):
         return color_pair(3) | curses.A_BOLD
     if line_opens_thought(line) or line_closes_thought(line):
         return color_pair(4) | curses.A_BOLD
-    if line_is_in_thought(source_idx, log_snapshot):
+    if entry["in_thought"]:
         return color_pair(4)
     return color_pair(0)
 
@@ -441,30 +478,31 @@ def render_ansi_line(stdscr, y, x, line, max_width):
 def build_visible_log_lines(width):
     """Return (visible_lines, log_snapshot, total_count).
 
-    visible_lines elements are (absolute_line_idx, segment_text).
+    visible_lines elements are (absolute_line_idx, segment_text, entry).
     """
-    global _visible_log_cache, _visible_log_cache_key
-    # Fast path: check under the lock but avoid copying the deque when cached.
     with log_lock:
-        curr_version = log_version
-        cache_key = (width, curr_version)
-        if _visible_log_cache_key == cache_key and _visible_log_cache is not None:
-            return _visible_log_cache
-        # Cache miss: take a snapshot while we still hold the lock.
         log_snapshot = list(log_lines)
         total_count = log_lines_total_count
-    # Build wrapped lines outside the lock — this is the expensive part.
+    
+    # Build wrapped lines using the per-line cache
     visible = []
-    # The first line in log_snapshot has absolute index: total_count - len(log_snapshot)
     first_abs_idx = total_count - len(log_snapshot)
+    
     for idx, line in enumerate(log_snapshot):
         abs_idx = first_abs_idx + idx
-        for segment in wrap_render_line(line, width):
-            visible.append((abs_idx, segment))
-    result = (visible, log_snapshot, total_count)
-    _visible_log_cache = result
-    _visible_log_cache_key = cache_key
-    return result
+        entry = get_cached_log_entry(abs_idx, line, width, log_snapshot, idx)
+        for segment in entry["wrapped"][width]:
+            visible.append((abs_idx, segment, entry))
+            
+    # Cleanup log_cache periodically to remove absolute indices that are no longer in the deque
+    if len(log_cache) > LOG_HISTORY_MAXLEN * 1.5:
+        # Only keep indices that are within the current range
+        current_indices = set(range(first_abs_idx, total_count))
+        stale_indices = [idx for idx in log_cache if idx not in current_indices]
+        for idx in stale_indices:
+            log_cache.pop(idx, None)
+            
+    return (visible, log_snapshot, total_count)
 
 def collect_input(stdscr):
     keys = []
@@ -1110,10 +1148,10 @@ def main(stdscr):
         if not auto_scroll and visible_log_lines and last_scroll >= 0:
             # Find the absolute line index and segment offset we were on.
             if last_scroll < len(last_visible_lines):
-                target_abs_idx, target_segment = last_visible_lines[last_scroll]
+                target_abs_idx, target_segment, _ = last_visible_lines[last_scroll]
                 # Look for this same absolute content in the new list.
                 found = False
-                for i, (abs_idx, segment) in enumerate(visible_log_lines):
+                for i, (abs_idx, segment, _) in enumerate(visible_log_lines):
                     if abs_idx == target_abs_idx and segment == target_segment:
                         scroll_pos = i
                         found = True
@@ -1163,7 +1201,7 @@ def main(stdscr):
                     # Robust parsing for the telemetry oneliner
                     # Format: CPU:4.1% 43.1°C | RAM:15/32G | adapter:58°C ...
                     parts = line.split(" | ")
-                    
+
                     curr_x = 0
                     def safe_addstr(text, attr=0):
                         nonlocal curr_x
@@ -1176,11 +1214,11 @@ def main(stdscr):
                             pass
                         curr_x += len(safe_text)
                         return True
-                    
+
                     for idx, part in enumerate(parts):
                         if idx > 0:
                             if not safe_addstr(" | "): break
-                        
+
                         if part.startswith("CPU:"):
                             if not safe_addstr("CPU:", curses.A_BOLD): break
                             sub = part[4:].strip().split()
@@ -1192,7 +1230,7 @@ def main(stdscr):
                                 if not safe_addstr(" " + val_str, get_val_color(val, 25, 50, 75, 90)): break
                             except ValueError:
                                 if not safe_addstr(" " + val_str): break
-                            
+
                             # Remaining segments (Frequency, Temperature, etc.)
                             for item in sub[1:]:
                                 if "°C" in item:
@@ -1204,61 +1242,61 @@ def main(stdscr):
                                         if not safe_addstr(" " + item, t_color): break
                                     except ValueError:
                                         if not safe_addstr(" " + item): break
-                                else:
-                                    if not safe_addstr(" " + item): break
-                        elif part.startswith("RAM:"):
-                            if not safe_addstr("RAM:", curses.A_BOLD): break
-                            r_val_str = part[4:].strip()
-                            if "/" in r_val_str:
+                            else:
+                                if not safe_addstr(" " + item): break
+                    elif part.startswith("RAM:"):
+                        if not safe_addstr("RAM:", curses.A_BOLD): break
+                        r_val_str = part[4:].strip()
+                        if "/" in r_val_str:
+                            try:
+                                v1, v2 = r_val_str.split('/')
+                                # Strip all non-numeric characters except the decimal point
+                                def clean_val(s):
+                                    return "".join(c for c in s if c.isdigit() or c == '.')
+
+                                u_val = float(clean_val(v1))
+                                t_val = float(clean_val(v2))
+                                u_pct = (u_val / t_val) * 100 if t_val > 0 else 0
+
+                                r_color = get_val_color(u_pct, 25, 50, 75, 90)
+                                if not safe_addstr(" "): break
+                                # Show a small indicator block if usage is significant
+                                if u_pct > 75:
+                                    if not safe_addstr(" !! ", curses.A_REVERSE | r_color): break
+
+                                if not safe_addstr(" " + r_val_str, r_color): break
+                            except (ValueError, ZeroDivisionError):
+                                if not safe_addstr(" " + r_val_str): break
+                    else:
+                        # System temps
+                        s_parts = part.split()
+                        for s_idx, s_p in enumerate(s_parts):
+                            if s_idx > 0:
+                                if not safe_addstr(" "): break
+                            if ":" in s_p:
                                 try:
-                                    v1, v2 = r_val_str.split('/')
-                                    # Strip all non-numeric characters except the decimal point
-                                    def clean_val(s):
-                                        return "".join(c for c in s if c.isdigit() or c == '.')
-                                    
-                                    u_val = float(clean_val(v1))
-                                    t_val = float(clean_val(v2))
-                                    u_pct = (u_val / t_val) * 100 if t_val > 0 else 0
-                                    
-                                    r_color = get_val_color(u_pct, 25, 50, 75, 90)
-                                    if not safe_addstr(" "): break
-                                    # Show a small indicator block if usage is significant
-                                    if u_pct > 75:
-                                        if not safe_addstr(" !! ", curses.A_REVERSE | r_color): break
-                                    
-                                    if not safe_addstr(" " + r_val_str, r_color): break
-                                except (ValueError, ZeroDivisionError):
-                                    if not safe_addstr(" " + r_val_str): break
-                        else:
-                            # System temps
-                            s_parts = part.split()
-                            for s_idx, s_p in enumerate(s_parts):
-                                if s_idx > 0:
-                                    if not safe_addstr(" "): break
-                                if ":" in s_p:
-                                    try:
-                                        name, t_val_str = s_p.split(":")
-                                        if not safe_addstr(name + ":", curses.A_BOLD): break
-                                        t_val = float(t_val_str.replace("°C", ""))
-                                        t_color = get_temp_color(t_val)
-                                        if not safe_addstr(t_val_str, t_color): break
-                                    except ValueError:
-                                        if not safe_addstr(s_p): break
-                                else:
+                                    name, t_val_str = s_p.split(":")
+                                    if not safe_addstr(name + ":", curses.A_BOLD): break
+                                    t_val = float(t_val_str.replace("°C", ""))
+                                    t_color = get_temp_color(t_val)
+                                    if not safe_addstr(t_val_str, t_color): break
+                                except ValueError:
                                     if not safe_addstr(s_p): break
-                    # Clear remainder of CPU/RAM line
-                    try:
-                        stdscr.clrtoeol()
-                    except curses.error:
-                        pass
-                else:
-                    render_ansi_line(stdscr, i, 0, line, max_x - 1)
-            except (curses.error, ValueError, IndexError):
+                            else:
+                                if not safe_addstr(s_p): break
+                # Clear remainder of CPU/RAM line
                 try:
-                    render_ansi_line(stdscr, i, 0, line, max_x - 1)
+                    stdscr.clrtoeol()
                 except curses.error:
                     pass
-            
+            else:
+                render_ansi_line(stdscr, i, 0, line, max_x - 1)
+        except (curses.error, ValueError, IndexError):
+            try:
+                render_ansi_line(stdscr, i, 0, line, max_x - 1)
+            except curses.error:
+                pass
+
         if smi_lines < max_y:
             try:
                 stdscr.addstr(smi_lines, 0, ("-" * (max_x-1))[:max_x-1], curses.A_REVERSE)
@@ -1267,13 +1305,11 @@ def main(stdscr):
         
         # Render Log
         if SETTINGS["show_log"]:
-            first_abs_idx = total_count - len(log_snapshot)
             for i in range(log_h):
                 idx = scroll_pos + i
                 if idx < len(visible_log_lines):
-                    abs_idx, line = visible_log_lines[idx]
-                    rel_idx = abs_idx - first_abs_idx
-                    color = render_attr_for_log_line(rel_idx, line, log_snapshot)
+                    abs_idx, line, entry = visible_log_lines[idx]
+                    color = render_attr_for_log_line(entry, line)
                     
                     try:
                         # Pad line with spaces to clear old content without erasing
