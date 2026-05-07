@@ -14,10 +14,28 @@ import sys
 
 # Resolve paths relative to this script so the tool works for any user/install location
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
+# Primary installation directory for the tool
+INSTALL_DIR = pathlib.Path.home() / ".ollama-watch-tool"
+
 HEADER_FILE = SCRIPTS_DIR / "header.txt"
 OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
+
+# Prioritize config in the tool root, then check scripts/ fallback
+if (INSTALL_DIR / "ollama.conf").exists():
+    OLLAMA_CONFIG_FILE = INSTALL_DIR / "ollama.conf"
+elif not OLLAMA_CONFIG_FILE.exists() and (INSTALL_DIR / "scripts" / "ollama.conf").exists():
+    OLLAMA_CONFIG_FILE = INSTALL_DIR / "scripts" / "ollama.conf"
+
+# Primary log location is sibling to 'scripts/' (standard behavior)
 READABLE_LOG = str(SCRIPTS_DIR.parent / "ollama_readable.log")
 DEBUG_LOG = str(SCRIPTS_DIR.parent / "watch-ollama-debug.log")
+
+# Fallback to installed location if running from dev and logs not found locally
+if not os.path.exists(READABLE_LOG) and (INSTALL_DIR / "ollama_readable.log").exists():
+    READABLE_LOG = str(INSTALL_DIR / "ollama_readable.log")
+
+if not os.path.exists(DEBUG_LOG) and INSTALL_DIR.exists():
+    DEBUG_LOG = str(INSTALL_DIR / "watch-ollama-debug.log")
 
 SETTINGS = {
     "gpu_tool": "auto",
@@ -200,8 +218,7 @@ def detect_gpu_tool():
             return tool
     return "none"
 
-# Fallback to installed location if running from dev and log not found
-
+# Initialization of log and SMI state
 LOG_HISTORY_MAXLEN = 20000  # retained log lines; lower than original 100000 to cut rebuild cost
 log_lines = deque(maxlen=LOG_HISTORY_MAXLEN)
 log_lines_total_count = 0

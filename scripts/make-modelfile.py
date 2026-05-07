@@ -463,17 +463,24 @@ def _run(stdscr):
     _safe_addstr(stdscr, 1, 0, "Please wait, this may take a moment per model.", curses.A_DIM)
     stdscr.refresh()
     
-    # Try to find OLLAMA_HOST from ollama.conf if it exists near the script
+    # Try to find OLLAMA_HOST from ollama.conf if it exists near the script or in the tool root
     env = os.environ.copy()
-    conf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ollama.conf")
-    if os.path.exists(conf_path):
-        try:
-            with open(conf_path, "r") as f:
-                for line in f:
-                    if line.startswith("OLLAMA_HOST="):
-                        env["OLLAMA_HOST"] = line.split("=", 1)[1].strip().strip('"').strip("'")
-        except:
-            pass
+    scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    conf_paths = [
+        os.path.join(scripts_dir, "ollama.conf"),
+        os.path.join(os.path.dirname(scripts_dir), "ollama.conf"),
+        os.path.join(os.path.expanduser("~"), ".ollama-watch-tool", "ollama.conf")
+    ]
+    for cp in conf_paths:
+        if os.path.exists(cp):
+            try:
+                with open(cp, "r") as f:
+                    for line in f:
+                        if line.startswith("OLLAMA_HOST="):
+                            env["OLLAMA_HOST"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break # Found one, stop searching
+            except:
+                pass
 
     for i, fname in enumerate(generated):
         max_y, max_x = stdscr.getmaxyx()

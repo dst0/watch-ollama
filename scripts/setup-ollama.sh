@@ -9,8 +9,14 @@
 OLLAMA_SERVICE_DIR="/etc/systemd/system/ollama.service.d"
 OLLAMA_CONFIG="$OLLAMA_SERVICE_DIR/10-host.conf"
 KEEP_ALIVE_CONFIG="$OLLAMA_SERVICE_DIR/20-keep-alive.conf"
-INSTALL_DIR="$(dirname "$(readlink -f "$0")")"
-OLLAMA_CONF="$INSTALL_DIR/ollama.conf"
+# Scripts are in INSTALL_DIR/scripts, so we look for config in the parent (tool root)
+SCRIPTS_DIR="$(dirname "$(readlink -f "$0")")"
+OLLAMA_CONF="$(dirname "$SCRIPTS_DIR")/ollama.conf"
+
+# Handle case where it's not installed yet or run from dev root
+if [[ "$SCRIPTS_DIR" != *"/scripts" ]]; then
+    OLLAMA_CONF="$SCRIPTS_DIR/ollama.conf"
+fi
 
 DEFAULT_HOST="0.0.0.0"
 DEFAULT_PORT="11435"
