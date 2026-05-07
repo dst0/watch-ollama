@@ -20,6 +20,19 @@ def parse_duration(d_str):
             return mins * 60 + secs
     return 0.0
 
+def parse_size(s):
+    if not s: return 0.0
+    m = re.search(r'([0-9.]+)\s*([a-zA-Z]+)', s)
+    if not m: return 0.0
+    val, unit = float(m.group(1)), m.group(2).lower()
+    mult = {"gib": 1024**3, "mib": 1024**2, "kib": 1024, "b": 1}.get(unit, 1)
+    if mult == 1 and 'gb' in unit: mult = 10**9
+    if mult == 1 and 'mb' in unit: mult = 10**6
+    return val * mult
+
+def format_size(b):
+    return f"{b / 1024**3:.1f}"
+
 def parse_logs():
     # Regex patterns
     config_pattern = re.compile(r'time=.* level=INFO source=types.go:42 msg="inference compute" id=(.*) library=(.*) compute=(.*) name=(.*) total="(.*)" available="(.*)"')
@@ -39,9 +52,12 @@ def parse_logs():
                 # Detect Config/Hardware Info
                 config_match = config_pattern.search(line)
                 if config_match:
-                    gpu_id, lib, compute, name, total, avail = config_match.groups()
+                    gpu_id, lib, compute, name, total_str, avail_str = config_match.groups()
+                    total_b = parse_size(total_str)
+                    avail_b = parse_size(avail_str)
+                    used_b = max(0, total_b - avail_b)
                     print(f"Hardware: {name} ({lib} {compute})")
-                    print(f"VRAM: {avail} / {total}")
+                    print(f"VRAM: {format_size(used_b)}/{format_size(total_b)}GiB")
                     print("-" * 30)
 
                 # Detect Response Content (TRACE level encoded string)

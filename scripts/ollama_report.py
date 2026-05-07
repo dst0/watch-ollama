@@ -27,10 +27,26 @@ def get_report():
 
     print("=== OLLAMA SYSTEM STATUS & CONFIG ===")
     
+    def parse_size(s):
+        if not s: return 0.0
+        m = re.search(r'([0-9.]+)\s*([a-zA-Z]+)', s)
+        if not m: return 0.0
+        val, unit = float(m.group(1)), m.group(2).lower()
+        mult = {"gib": 1024**3, "mib": 1024**2, "kib": 1024, "b": 1}.get(unit, 1)
+        if mult == 1 and 'gb' in unit: mult = 10**9
+        if mult == 1 and 'mb' in unit: mult = 10**6
+        return val * mult
+
+    def format_size(b):
+        return f"{b / 1024**3:.1f}"
+
     # 1. Hardware Detection
     gpu_matches = re.finditer(r'msg="inference compute".*name=(.*) libdirs=.*total="(.*)" available="(.*)"', content)
     for m in gpu_matches:
-        print(f"GPU: {m.group(1).strip()} | Memory: {m.group(3)} / {m.group(2)}")
+        t_str, a_str = m.group(2), m.group(3)
+        total_b, avail_b = parse_size(t_str), parse_size(a_str)
+        used_b = max(0, total_b - avail_b)
+        print(f"GPU: {m.group(1).strip()} | VRAM: {format_size(used_b)}/{format_size(total_b)}GiB")
     
     # 2. Model Loading
     model_match = re.search(r'msg="loaded runners" count=(\d+)', content)

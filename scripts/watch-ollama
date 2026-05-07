@@ -708,7 +708,7 @@ def poll_smi():
             cpu_line = f"CPU:{cpu_pct} {temp_str}"
             
             if ram_total > 0:
-                cpu_line += f" | RAM:{ram_avail:.0f}/{ram_total:.0f}G"
+                cpu_line += f" | RAM:{ram_used:.1f}/{ram_total:.1f}GiB"
             
             if sys_temps:
                 cpu_line += " | " + " ".join(sys_temps)
@@ -1136,7 +1136,7 @@ def main(stdscr):
                             if not safe_addstr(" | "): break
                         
                         if part.startswith("CPU:"):
-                            if not safe_addstr("CPU", curses.A_BOLD): break
+                            if not safe_addstr("CPU:", curses.A_BOLD): break
                             sub = part[4:].strip().split()
                             if not sub: continue
                             # Load %
@@ -1163,8 +1163,21 @@ def main(stdscr):
                             if "/" in r_val_str:
                                 try:
                                     v1, v2 = r_val_str.split('/')
-                                    u_pct = (1.0 - float(v1.replace("G", "").replace("M", "")) / float(v2.replace("G", "").replace("M", ""))) * 100
-                                    if not safe_addstr(" " + r_val_str, get_val_color(u_pct, 25, 50, 75, 90)): break
+                                    # Strip all non-numeric characters except the decimal point
+                                    def clean_val(s):
+                                        return "".join(c for c in s if c.isdigit() or c == '.')
+                                    
+                                    u_val = float(clean_val(v1))
+                                    t_val = float(clean_val(v2))
+                                    u_pct = (u_val / t_val) * 100 if t_val > 0 else 0
+                                    
+                                    r_color = get_val_color(u_pct, 25, 50, 75, 90)
+                                    if not safe_addstr(" "): break
+                                    # Show a small indicator block if usage is significant
+                                    if u_pct > 75:
+                                        if not safe_addstr(" !! ", curses.A_REVERSE | r_color): break
+                                    
+                                    if not safe_addstr(" " + r_val_str, r_color): break
                                 except (ValueError, ZeroDivisionError):
                                     if not safe_addstr(" " + r_val_str): break
                         else:
