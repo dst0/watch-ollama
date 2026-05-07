@@ -83,7 +83,7 @@ def save_setting(key, value):
         if line.strip().startswith(key_upper + "="):
             new_lines.append(f"{key_upper}={value}")
             found = True
-    else:
+        else:
             new_lines.append(line)
     
     if not found:
