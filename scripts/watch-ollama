@@ -604,6 +604,9 @@ def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
                 changed = True
                 smi_changed = True
                 smi_poll_trigger.set()
+            elif key == 19: # Ctrl+S
+                toggle_mouse(stdscr, not MOUSE_ENABLED)
+                changed = True
             elif key == curses.KEY_MOUSE:
                 try:
                     _, _, _, _, bstate = curses.getmouse()
@@ -1031,8 +1034,19 @@ def main(stdscr):
     
     # Enable mouse events for scrolling
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
-    # Some terminals need this to enable mouse reporting
-    print("\033[?1003h", end="") 
+    MOUSE_ENABLED = True
+
+def toggle_mouse(stdscr, enable):
+    global MOUSE_ENABLED
+    MOUSE_ENABLED = enable
+    if enable:
+        curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+        print("\033[?1003h", end="") 
+    else:
+        curses.mousemask(0)
+        print("\033[?1003l", end="")
+    stdscr.refresh()
+
     
     # Setup Colors
     curses.start_color()
@@ -1361,7 +1375,7 @@ def main(stdscr):
         if max_y > 0:
             follow_txt = "FOLLOWING" if auto_scroll else "PAUSED"
             follow_hint = "Pause" if auto_scroll else "Follow"
-            hints = f" (G:GPU C:CPU L:Log H:Hint T:Tool | F:{follow_hint} | Q:Quit) " if SETTINGS["show_hints"] else ""
+            hints = f" (G:GPU C:CPU L:Log H:Hint T:Tool S:Mouse | F:{follow_hint} | Q:Quit) " if SETTINGS["show_hints"] else ""
             status_text = f" [{follow_txt}] (Line {scroll_pos}/{len(visible_log_lines)}){hints}"
             status_line = status_text.ljust(max_x-1)
             try:

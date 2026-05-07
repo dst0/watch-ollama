@@ -168,6 +168,7 @@ The TUI is split into two panels separated by a reverse-video divider. It uses *
 | `L` | Toggle log panel on/off |
 | `H` | Toggle hint bar on/off |
 | `T` | Cycle GPU tool: `auto` → `nvidia-smi` → `amd-smi` → `rocm-smi` → `none` → … |
+| `S` | Toggle mouse interception (enable/disable terminal selection) |
 | `Q` / `Ctrl-C` / `Esc` | Quit |
 
 > `T` cycles the GPU tool and persists the choice to `ollama.conf` — useful when you want to force a specific SMI tool or disable the GPU panel entirely.
