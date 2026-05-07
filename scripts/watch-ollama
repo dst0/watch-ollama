@@ -93,6 +93,7 @@ def save_setting(key, value):
 
 load_settings()
 OLLAMA_API_URL = SETTINGS["ollama_host"]
+MOUSE_ENABLED = True
 
 def get_cpu_usage():
     try:
@@ -533,7 +534,7 @@ def collect_input(stdscr):
             return keys
         keys.append(key)
 
-def apply_input(keys, scroll_pos, auto_scroll, log_line_count, log_h):
+def apply_input(stdscr, keys, scroll_pos, auto_scroll, log_line_count, log_h):
     max_scroll = max(0, log_line_count - log_h)
     changed = False
     smi_changed = False
@@ -1017,6 +1018,18 @@ def _get_model_params(model_name):
         _model_params_cache[model_name] = (now, "")
         return ""
 
+def toggle_mouse(stdscr, enable):
+    global MOUSE_ENABLED
+    MOUSE_ENABLED = enable
+    if enable:
+        curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+        # Using print for escape sequences in curses can be tricky, but keeping existing logic
+        print("\033[?1003h", end="") 
+    else:
+        curses.mousemask(0)
+        print("\033[?1003l", end="")
+    stdscr.refresh()
+
 def main(stdscr):
     # Load ASCII Header
     try:
@@ -1034,20 +1047,8 @@ def main(stdscr):
     
     # Enable mouse events for scrolling
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
-    MOUSE_ENABLED = True
-
-def toggle_mouse(stdscr, enable):
     global MOUSE_ENABLED
-    MOUSE_ENABLED = enable
-    if enable:
-        curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
-        print("\033[?1003h", end="") 
-    else:
-        curses.mousemask(0)
-        print("\033[?1003l", end="")
-    stdscr.refresh()
-
-
+    MOUSE_ENABLED = True
     
     # Setup Colors
     curses.start_color()
@@ -1198,7 +1199,7 @@ def toggle_mouse(stdscr, enable):
 
         # Apply input using the accurate layout.
         scroll_pos, auto_scroll, input_changed, smi_changed = apply_input(
-            keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
+            stdscr, keys, scroll_pos, auto_scroll, len(visible_log_lines), log_h
         )
         if smi_changed:
             smi_reset_counter = SMI_RESET_FRAMES  # clear reservations to allow panel to shrink
