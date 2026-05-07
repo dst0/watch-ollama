@@ -18,6 +18,7 @@ SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 INSTALL_DIR = pathlib.Path.home() / ".ollama-watch-tool"
 
 HEADER_FILE = SCRIPTS_DIR / "header.txt"
+HEADER_SMALL_FILE = SCRIPTS_DIR / "header_small.txt"
 OLLAMA_CONFIG_FILE = SCRIPTS_DIR / "ollama.conf"
 
 # Prioritize config in the tool root, then check scripts/ fallback
@@ -1031,14 +1032,22 @@ def toggle_mouse(stdscr, enable):
     stdscr.refresh()
 
 def main(stdscr):
-    # Load ASCII Header
+    # Load ASCII Headers
     try:
         with open(HEADER_FILE, "r") as f:
             header_lines = f.read().splitlines()
     except FileNotFoundError:
         header_lines = ["WATCH OLLAMA", "Monitoring, Benchmarking, & Management Suite"]
     
-    header = header_lines + ["", "Welcome to watch-ollama. Press 'q' to quit."]
+    try:
+        with open(HEADER_SMALL_FILE, "r") as f:
+            header_small_lines = f.read().splitlines()
+    except FileNotFoundError:
+        header_small_lines = ["WATCH OLLAMA"]
+    
+    welcome_msg = ["", "Welcome to watch-ollama. Press 'q' to quit."]
+    header_full = header_lines + welcome_msg
+    header_small = header_small_lines + welcome_msg
     
     curses.curs_set(0)
     stdscr.nodelay(1)
@@ -1082,8 +1091,12 @@ def main(stdscr):
         max_y, max_x = stdscr.getmaxyx()
         stdscr.erase()
 
-        start_y = max(0, (max_y - len(header)) // 2)
-        for i, line in enumerate(header):
+        # Choose header based on width
+        # The full header is ~115 chars wide
+        current_header = header_full if max_x > 120 else header_small
+
+        start_y = max(0, (max_y - len(current_header)) // 2)
+        for i, line in enumerate(current_header):
             y = start_y + i
             if y >= max_y:
                 break

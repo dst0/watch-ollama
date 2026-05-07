@@ -149,8 +149,10 @@ for script in "$PROJECT_ROOT/scripts/"*; do
         filename=$(basename "$script")
         cp "$script" "$INSTALL_DIR/$filename"
         change "Copied: $filename → $INSTALL_DIR/$filename"
-        chmod +x "$INSTALL_DIR/$filename"
-        change "chmod +x: $INSTALL_DIR/$filename"
+        if [[ "$filename" == *.sh || "$filename" == watch-ollama || "$filename" == *.py ]]; then
+            chmod +x "$INSTALL_DIR/$filename"
+            change "chmod +x: $INSTALL_DIR/$filename"
+        fi
     fi
 done
 
