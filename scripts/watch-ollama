@@ -312,6 +312,8 @@ def line_closes_thought(line):
     return "</think>" in line or "[/THOUGHT]" in line
 
 def line_is_in_thought(source_idx, log_snapshot):
+    if source_idx < 0 or source_idx >= len(log_snapshot):
+        return False
     for j in range(source_idx, max(-1, source_idx - 500), -1):
         check_line = sanitize_render_text(log_snapshot[j])
         if line_opens_thought(check_line):
@@ -1198,11 +1200,13 @@ def main(stdscr):
         
         # Render Log
         if SETTINGS["show_log"]:
+            first_abs_idx = total_count - len(log_snapshot)
             for i in range(log_h):
                 idx = scroll_pos + i
                 if idx < len(visible_log_lines):
-                    source_idx, line = visible_log_lines[idx]
-                    color = render_attr_for_log_line(source_idx, line, log_snapshot)
+                    abs_idx, line = visible_log_lines[idx]
+                    rel_idx = abs_idx - first_abs_idx
+                    color = render_attr_for_log_line(rel_idx, line, log_snapshot)
                     
                     try:
                         stdscr.addstr(smi_lines + 1 + i, 0, line[:render_width], color)

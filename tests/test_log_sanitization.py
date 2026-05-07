@@ -170,6 +170,39 @@ class LogSanitizationTests(unittest.TestCase):
     def test_tui_startup_logo_has_fixed_minimum_duration(self):
         self.assertEqual(TUI.STARTUP_LOGO_SECONDS, 2.0)
 
+    def test_line_is_in_thought_bounds_check(self):
+        log_snapshot = ["<think>", "thought content", "</think>", "normal line"]
+        
+        # In thought (index 1 is "thought content")
+        self.assertTrue(TUI.line_is_in_thought(1, log_snapshot))
+        
+        # Out of thought (index 3 is "normal line")
+        self.assertFalse(TUI.line_is_in_thought(3, log_snapshot))
+        
+        # Out of bounds (positive) - should not crash and return False
+        self.assertFalse(TUI.line_is_in_thought(4, log_snapshot))
+        
+        # Out of bounds (negative) - should not crash and return False
+        self.assertFalse(TUI.line_is_in_thought(-1, log_snapshot))
+
+    def test_relative_index_calculation_logic(self):
+        # This mirrors the logic added to main
+        total_count = 20005
+        log_snapshot = ["line"] * 20000 # maxlen
+        first_abs_idx = total_count - len(log_snapshot) # 5
+        
+        # First line in snapshot has abs_idx 5
+        abs_idx = 5
+        rel_idx = abs_idx - first_abs_idx
+        self.assertEqual(rel_idx, 0)
+        self.assertEqual(log_snapshot[rel_idx], "line")
+        
+        # Last line in snapshot has abs_idx 20004
+        abs_idx = 20004
+        rel_idx = abs_idx - first_abs_idx
+        self.assertEqual(rel_idx, 19999)
+        self.assertEqual(log_snapshot[rel_idx], "line")
+
 
 if __name__ == "__main__":
     unittest.main()
