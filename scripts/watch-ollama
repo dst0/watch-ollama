@@ -428,8 +428,15 @@ def render_ansi_line(stdscr, y, x, line, max_width):
     if chunk and draw_x < max_width:
         try:
             stdscr.addstr(y, draw_x, chunk[:max_width - draw_x], ansi_attr(fg_color, bold))
+            draw_x += len(chunk[:max_width - draw_x])
         except curses.error:
             pass
+
+    # Clear remainder of line to prevent ghost characters
+    try:
+        stdscr.clrtoeol()
+    except curses.error:
+        pass
 
 def build_visible_log_lines(width):
     """Return (visible_lines, log_snapshot, total_count).
@@ -1071,10 +1078,8 @@ def main(stdscr):
         observed_smi_lines = len(smi_snapshot) if smi_snapshot else 15
 
         # Keep the top telemetry panel from jumping when Ollama briefly
-        # changes model/prompt rows.  Reset only on terminal height change
-        # or panel toggle (smi_reset_counter set in apply_input).
+        # changes model/prompt rows.
         if len(smi_snapshot) != last_snapshot_len:
-            reserved_smi_lines_by_height.clear()
             last_snapshot_len = len(smi_snapshot)
 
         if smi_reset_counter > 0:
@@ -1136,7 +1141,8 @@ def main(stdscr):
             scroll_pos = min(max(0, scroll_pos), max_scroll)
 
         # ── RENDER ───────────────────────────────────────────────────────
-        stdscr.erase()
+        # We avoid stdscr.erase() here to prevent flickering. Section-specific
+        # rendering now handles clearing its own lines via padding or clrtoeol.
 
         # Render SMI
         for i in range(smi_lines):
@@ -1229,6 +1235,11 @@ def main(stdscr):
                                         if not safe_addstr(s_p): break
                                 else:
                                     if not safe_addstr(s_p): break
+                    # Clear remainder of CPU/RAM line
+                    try:
+                        stdscr.clrtoeol()
+                    except curses.error:
+                        pass
                 else:
                     render_ansi_line(stdscr, i, 0, line, max_x - 1)
             except (curses.error, ValueError, IndexError):
@@ -1239,7 +1250,7 @@ def main(stdscr):
             
         if smi_lines < max_y:
             try:
-                stdscr.addstr(smi_lines, 0, "-" * (max_x-1), curses.A_REVERSE)
+                stdscr.addstr(smi_lines, 0, ("-" * (max_x-1))[:max_x-1], curses.A_REVERSE)
             except curses.error:
                 pass
         
@@ -1254,7 +1265,15 @@ def main(stdscr):
                     color = render_attr_for_log_line(rel_idx, line, log_snapshot)
                     
                     try:
-                        stdscr.addstr(smi_lines + 1 + i, 0, line[:render_width], color)
+                        # Pad line with spaces to clear old content without erasing
+                        stdscr.addstr(smi_lines + 1 + i, 0, line[:render_width].ljust(render_width), color)
+                    except curses.error:
+                        pass
+                else:
+                    # Clear empty log area
+                    try:
+                        stdscr.move(smi_lines + 1 + i, 0)
+                        stdscr.clrtoeol()
                     except curses.error:
                         pass
         
