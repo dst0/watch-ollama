@@ -215,7 +215,7 @@ def main():
                         out.flush()
 
             # --- PREFILL ---
-            if 'level=INFO' in line and 'msg="prefill in progress"' in line:
+            elif 'level=INFO' in line and 'msg="prefill in progress"' in line:
                 match = re.search(r'processed=(\d+)\s+total=(\d+)', line)
                 if match:
                     processed, total = match.groups()
@@ -224,12 +224,14 @@ def main():
                         elapsed = time.time() - prompt_start_time
                         pp_speed = int(processed) / elapsed if elapsed > 0 else 0
                         pct = int((int(processed) / int(total)) * 100) if int(total) > 0 else 0
-                        with open(READABLE_LOG, "a") as out:
-                            out.write(f"[Prefill Progress: {processed}/{total} ({pct}%) - {pp_speed:.1f} PP/s]\n")
-                            out.flush()
+                        # Only log every 10% or if finished to avoid flooding
+                        if int(processed) % max(1, (int(total) // 10)) == 0 or processed == total:
+                            with open(READABLE_LOG, "a") as out:
+                                out.write(f"[Prefill Progress: {processed}/{total} ({pct}%) - {pp_speed:.1f} PP/s]\n")
+                                out.flush()
 
             # --- TOKENS (GENERATION) ---
-            if "msg=decoded string=" in line:
+            elif "msg=decoded string=" in line:
                 if eval_count == 0:
                     generation_start_time = time.time() # Mark when first token arrives
                 eval_count += 1
@@ -245,6 +247,24 @@ def main():
                         
                     with open(READABLE_LOG, "a") as out:
                         out.write(token)
+                        out.flush()
+
+            # --- GENERAL STATUS (Pass-through for other INFO/WARN/ERROR) ---
+            elif any(lvl in line for lvl in ['level=INFO', 'level=WARN', 'level=ERROR']):
+                # Skip messages we've already handled or are definitely noise
+                if any(noise in line for noise in ['msg="request complete"', 'msg="prefill in progress"']):
+                    continue
+                
+                m = re.search(r'msg="([^"]*)"', line)
+                if m:
+                    msg = m.group(1)
+                    ts = time.strftime("%H:%M:%S")
+                    lvl_tag = ""
+                    if 'level=WARN' in line: lvl_tag = "[WARN] "
+                    elif 'level=ERROR' in line: lvl_tag = "[ERROR] "
+                    
+                    with open(READABLE_LOG, "a") as out:
+                        out.write(f"[{ts}] {lvl_tag}{msg}\n")
                         out.flush()
             
             # --- STOPPED / ERROR ---
