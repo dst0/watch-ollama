@@ -598,6 +598,7 @@ def apply_input(stdscr, keys, scroll_pos, auto_scroll, log_line_count, log_h):
             elif key == ord('l') or key == ord('L'):
                 save_setting("show_log", not SETTINGS["show_log"])
                 changed = True
+                smi_changed = True # Allow SMI to expand/shrink
             elif key == ord('h') or key == ord('H'):
                 save_setting("show_hints", not SETTINGS["show_hints"])
                 changed = True
@@ -1190,7 +1191,12 @@ def main(stdscr):
         reserved_smi_lines_by_height[max_y] = smi_lines
 
         error_h = min(2, len(active_errors))
-        log_h = max(1, max_y - smi_lines - error_h - 2)
+        if SETTINGS["show_log"]:
+            log_h = max(1, max_y - smi_lines - error_h - 2)
+        else:
+            log_h = 0
+            # If log is hidden, let SMI take all remaining space
+            smi_lines = max_y - error_h - 1
 
         # ── DRIFT COMPENSATION ───────────────────────────────────────────
         # If we are paused, try to stay on the same absolute content even
@@ -1373,6 +1379,14 @@ def main(stdscr):
                         stdscr.clrtoeol()
                     except curses.error:
                         pass
+        else:
+            # Explicitly clear the log area if hidden to prevent ghost lines
+            for i in range(max_y - smi_lines - error_h - 1):
+                try:
+                    stdscr.move(smi_lines + 1 + i, 0)
+                    stdscr.clrtoeol()
+                except curses.error:
+                    pass
         
         # Render Error Section
         error_start = max_y - 1 - error_h
