@@ -1168,24 +1168,27 @@ def main(stdscr):
                             if not safe_addstr("CPU:", curses.A_BOLD): break
                             sub = part[4:].strip().split()
                             if not sub: continue
-                            # Load %
+                            # Load % (first segment)
                             val_str = sub[0]
                             try:
                                 val = float(val_str.replace("%", ""))
                                 if not safe_addstr(" " + val_str, get_val_color(val, 25, 50, 75, 90)): break
                             except ValueError:
                                 if not safe_addstr(" " + val_str): break
-                            # Temp
-                            if len(sub) > 1:
-                                temp_str = sub[1]
-                                try:
-                                    t_val = float(temp_str.replace("°C", ""))
-                                    t_color = get_temp_color(t_val)
-                                    if not safe_addstr(" "): break
-                                    if not safe_addstr(" 🌡 ", curses.A_REVERSE | t_color): break
-                                    if not safe_addstr(" " + temp_str, t_color): break
-                                except ValueError:
-                                    if not safe_addstr(" " + temp_str): break
+                            
+                            # Remaining segments (Frequency, Temperature, etc.)
+                            for item in sub[1:]:
+                                if "°C" in item:
+                                    try:
+                                        t_val = float(item.replace("°C", ""))
+                                        t_color = get_temp_color(t_val)
+                                        if not safe_addstr(" "): break
+                                        if not safe_addstr(" 🌡 ", curses.A_REVERSE | t_color): break
+                                        if not safe_addstr(" " + item, t_color): break
+                                    except ValueError:
+                                        if not safe_addstr(" " + item): break
+                                else:
+                                    if not safe_addstr(" " + item): break
                         elif part.startswith("RAM:"):
                             if not safe_addstr("RAM:", curses.A_BOLD): break
                             r_val_str = part[4:].strip()
