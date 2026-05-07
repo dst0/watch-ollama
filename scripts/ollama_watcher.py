@@ -76,7 +76,7 @@ def format_text(text):
     text = re.sub(r'\n*[ \t]*(### (?:SYSTEM|USER|ASSISTANT))[ \t]*\n*', r'\n\n\1\n', text)
 
     # Deduplicate consecutive identical role markers (e.g., redundant ### SYSTEM)
-    text = re.sub(r'(### (?:SYSTEM|USER|ASSISTANT))\n+(?=\1)', '', text)
+    text = re.sub(r'(### (?:SYSTEM|USER|ASSISTANT))(?:\n+\s*)+(\1)', r'\1', text)
 
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip("\n")
