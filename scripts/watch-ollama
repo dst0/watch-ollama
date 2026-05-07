@@ -388,6 +388,10 @@ def render_attr_for_log_line(entry, line, color_pair=None):
     if color_pair is None:
         color_pair = curses.color_pair
 
+    # Context history marker (prefixed by ollama_watcher.py)
+    if line.startswith("| "):
+        return color_pair(8)
+
     role_color_pair = role_color_pair_for_line(line)
     if role_color_pair is not None:
         return color_pair(role_color_pair) | curses.A_BOLD

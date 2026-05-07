@@ -27,16 +27,51 @@ def decode_go_string(s):
         return s.replace('\\\\"', '"').replace('\\\\n', '\n').replace('\\\\t', '\t').replace('\\"', '"').replace('\\n', '\n').replace('\\t', '\t')
 
 def format_text(text):
+    # 1. First-pass cleanup
     text = text.replace('\\u003c', '<').replace('\\u003e', '>')
     text = text.replace('\r', '')
-    text = text.replace('<|im_start|>system', '\n### SYSTEM')
-    text = text.replace('<|im_start|>user', '\n### USER')
-    text = text.replace('<|im_start|>assistant', '\n### ASSISTANT')
-    text = text.replace('<|im_end|>', '\n')
-    text = text.replace('<|endoftext|>', '\n')
+    
+    # 2. Convert common chat tokens to readable markers
+    # Supports ChatML, Llama3-style, etc.
+    replacements = {
+        '<|im_start|>system': '\n### SYSTEM',
+        '<|im_start|>user': '\n### USER',
+        '<|im_start|>assistant': '\n### ASSISTANT',
+        '<|start_header_id|>system<|end_header_id|>\n\n': '\n### SYSTEM\n',
+        '<|start_header_id|>user<|end_header_id|>\n\n': '\n### USER\n',
+        '<|start_header_id|>assistant<|end_header_id|>\n\n': '\n### ASSISTANT\n',
+        '<|im_end|>': '\n',
+        '<|endoftext|>': '\n',
+        '<|eot_id|>': '\n',
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+        
+    # 3. Strip remaining special tokens and control chars
     text = SPECIAL_TOKENS_RE.sub('', text)
     text = BARE_IM_START_RE.sub('', text)
     text = CONTROL_CHARS_RE.sub('', text)
+    
+    # 4. Filter binary noise / large base64 chunks (likely images)
+    # If we find a word longer than 500 chars with no spaces, it's noise
+    text = re.sub(r'[A-Za-z0-9+/]{500,}', '[... Binary/Base64 Data ...]', text)
+    
+    # 5. Handle Chat History (Dimmed View)
+    # If there are multiple USER blocks, this is a conversation history dump
+    user_blocks = list(re.finditer(r'### USER', text))
+    if len(user_blocks) > 1:
+        last_user_idx = user_blocks[-1].start()
+        history_part = text[:last_user_idx].strip()
+        new_part = text[last_user_idx:].strip()
+        
+        # Prefix history lines with "| " so the UI can dim them
+        if history_part:
+            dimmed_history = "\n".join(f"| {line}" for line in history_part.splitlines())
+            text = f"{dimmed_history}\n\n{new_part}"
+        else:
+            text = new_part
+
+    # 6. Final spacing refinement
     text = re.sub(r'\n(### (?:SYSTEM|USER|ASSISTANT))(?=\S)', r'\n\1\n', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip("\n")
