@@ -976,7 +976,7 @@ def _get_model_params(model_name):
             for line in param_str.splitlines():
                 parts = line.strip().split(None, 1)
                 if len(parts) == 2:
-                    params[parts[0]] = parts[1]
+                    params[parts[0]] = params[parts[1]]
 
             param_list = []
             for p in params_of_interest:
@@ -1242,60 +1242,60 @@ def main(stdscr):
                                         if not safe_addstr(" " + item, t_color): break
                                     except ValueError:
                                         if not safe_addstr(" " + item): break
-                            else:
-                                if not safe_addstr(" " + item): break
-                    elif part.startswith("RAM:"):
-                        if not safe_addstr("RAM:", curses.A_BOLD): break
-                        r_val_str = part[4:].strip()
-                        if "/" in r_val_str:
-                            try:
-                                v1, v2 = r_val_str.split('/')
-                                # Strip all non-numeric characters except the decimal point
-                                def clean_val(s):
-                                    return "".join(c for c in s if c.isdigit() or c == '.')
-
-                                u_val = float(clean_val(v1))
-                                t_val = float(clean_val(v2))
-                                u_pct = (u_val / t_val) * 100 if t_val > 0 else 0
-
-                                r_color = get_val_color(u_pct, 25, 50, 75, 90)
-                                if not safe_addstr(" "): break
-                                # Show a small indicator block if usage is significant
-                                if u_pct > 75:
-                                    if not safe_addstr(" !! ", curses.A_REVERSE | r_color): break
-
-                                if not safe_addstr(" " + r_val_str, r_color): break
-                            except (ValueError, ZeroDivisionError):
-                                if not safe_addstr(" " + r_val_str): break
-                    else:
-                        # System temps
-                        s_parts = part.split()
-                        for s_idx, s_p in enumerate(s_parts):
-                            if s_idx > 0:
-                                if not safe_addstr(" "): break
-                            if ":" in s_p:
+                                else:
+                                    if not safe_addstr(" " + item): break
+                        elif part.startswith("RAM:"):
+                            if not safe_addstr("RAM:", curses.A_BOLD): break
+                            r_val_str = part[4:].strip()
+                            if "/" in r_val_str:
                                 try:
-                                    name, t_val_str = s_p.split(":")
-                                    if not safe_addstr(name + ":", curses.A_BOLD): break
-                                    t_val = float(t_val_str.replace("°C", ""))
-                                    t_color = get_temp_color(t_val)
-                                    if not safe_addstr(t_val_str, t_color): break
-                                except ValueError:
+                                    v1, v2 = r_val_str.split('/')
+                                    # Strip all non-numeric characters except the decimal point
+                                    def clean_val(s):
+                                        return "".join(c for c in s if c.isdigit() or c == '.')
+
+                                    u_val = float(clean_val(v1))
+                                    t_val = float(clean_val(v2))
+                                    u_pct = (u_val / t_val) * 100 if t_val > 0 else 0
+
+                                    r_color = get_val_color(u_pct, 25, 50, 75, 90)
+                                    if not safe_addstr(" "): break
+                                    # Show a small indicator block if usage is significant
+                                    if u_pct > 75:
+                                        if not safe_addstr(" !! ", curses.A_REVERSE | r_color): break
+
+                                    if not safe_addstr(" " + r_val_str, r_color): break
+                                except (ValueError, ZeroDivisionError):
+                                    if not safe_addstr(" " + r_val_str): break
+                        else:
+                            # System temps
+                            s_parts = part.split()
+                            for s_idx, s_p in enumerate(s_parts):
+                                if s_idx > 0:
+                                    if not safe_addstr(" "): break
+                                if ":" in s_p:
+                                    try:
+                                        name, t_val_str = s_p.split(":")
+                                        if not safe_addstr(name + ":", curses.A_BOLD): break
+                                        t_val = float(t_val_str.replace("°C", ""))
+                                        t_color = get_temp_color(t_val)
+                                        if not safe_addstr(t_val_str, t_color): break
+                                    except ValueError:
+                                        if not safe_addstr(s_p): break
+                                else:
                                     if not safe_addstr(s_p): break
-                            else:
-                                if not safe_addstr(s_p): break
-                # Clear remainder of CPU/RAM line
+                    # Clear remainder of CPU/RAM line
+                    try:
+                        stdscr.clrtoeol()
+                    except curses.error:
+                        pass
+                else:
+                    render_ansi_line(stdscr, i, 0, line, max_x - 1)
+            except (curses.error, ValueError, IndexError):
                 try:
-                    stdscr.clrtoeol()
+                    render_ansi_line(stdscr, i, 0, line, max_x - 1)
                 except curses.error:
                     pass
-            else:
-                render_ansi_line(stdscr, i, 0, line, max_x - 1)
-        except (curses.error, ValueError, IndexError):
-            try:
-                render_ansi_line(stdscr, i, 0, line, max_x - 1)
-            except curses.error:
-                pass
 
         if smi_lines < max_y:
             try:
