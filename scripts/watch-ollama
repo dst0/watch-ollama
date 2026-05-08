@@ -126,7 +126,7 @@ def get_line_segments_count(raw_idx, width):
 
 def find_scroll_start_for_bottom(log_h, width):
     total_raw = len(log_indexer)
-    if total_raw == 0: return 0, 0
+    if total_raw == 0 or log_h <= 0: return 0, 0
     lines_needed, curr_raw = log_h, total_raw - 1
     raw = log_indexer.get_line(curr_raw)
     entry = get_cached_log_entry(curr_raw, raw, width)
@@ -364,48 +364,75 @@ def main(stdscr):
         if not render_dirty:
             wait_s = 0.02 if (time.time() - last_log_update < 1.0) else (IDLE_WAIT_AFTER_INPUT if input_was_active else IDLE_WAIT_DEFAULT)
             render_event.wait(timeout=wait_s); render_event.clear()
+        
+        # ── INPUT (non-blocking drain) ───────────────────────────────────
         keys = collect_input(stdscr)
         if any(k in [3, ord('q'), ord('Q'), 27] for k in keys): break
 
+        # ── STATE SNAPSHOT ───────────────────────────────────────────────
         max_y, max_x = stdscr.getmaxyx()
         if (max_y, max_x) != last_term_size: stdscr.clear()
+        
         smi_snapshot, cpu_temp, curr_smi_ver = telemetry.get_smi_snapshot()
         render_width = max(1, max_x - 1)
-        active_errors = get_error_lines(render_width); error_h = min(2, len(active_errors))
+        active_errors = get_error_lines(render_width)
+        error_h = min(2, len(active_errors))
         
         with log_lock:
             curr_log_ver = log_version
             total_raw = len(log_indexer)
-            # Efficiently check if last line changed without full read if possible
-            # But get_line is fast enough with open file handle
             last_line = log_indexer.get_line(total_raw - 1) if total_raw > 0 else ""
             curr_last_line_len = len(last_line)
 
-        # ── LAYOUT ───────────────────────────────────────────────────────
-        max_smi = max(5, (max_y * 2) // 3) if config.settings["show_log"] else max(5, max_y - error_h - 2)
-        if smi_reset_counter > 0: reserved_smi_lines_by_height.clear(); smi_reset_counter -= 1
-        smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
-        if smi_lines == 0:
-            smi_lines = min(max_smi, max(12, len(smi_snapshot))) if config.settings["show_gpu"] else min(max_smi, len(smi_snapshot))
-        reserved_smi_lines_by_height[max_y] = smi_lines
-        log_h = max(1, max_y - smi_lines - error_h - 2) if config.settings["show_log"] else 0
-        if not config.settings["show_log"]: smi_lines = max_y - error_h - 1
+        # ── APPLY INPUT ──────────────────────────────────────────────────
+        # We need a preliminary layout to handle mouse clicks correctly,
+        # but apply_input might change the layout for the NEXT frame.
+        # However, it's better to recalculate layout AFTER apply_input
+        # so the current frame reflects the new settings immediately.
+        
+        # Preliminary log_h for input (doesn't have to be perfect for mouse)
+        pre_smi_lines = min(max(5, (max_y * 2) // 3), len(smi_snapshot))
+        pre_log_h = max(1, max_y - pre_smi_lines - error_h - 2)
 
-        # Check for changes that should trigger auto-scroll update
+        scroll_pos, scroll_offset, auto_scroll, input_changed, smi_changed, quit_req = apply_input(
+            stdscr, keys, scroll_pos, scroll_offset, auto_scroll, pre_log_h, render_width, pre_smi_lines, 
+            build_visible_log_window(scroll_pos, scroll_offset, pre_log_h, render_width))
+        if quit_req: break
+        
+        if smi_changed or input_changed:
+            stdscr.clear()
+        input_was_active = bool(input_changed)
+
+        # ── FINAL LAYOUT ─────────────────────────────────────────────────
+        if config.settings["show_log"]:
+            max_smi = max(5, (max_y * 2) // 3)
+        else:
+            max_smi = max(5, max_y - error_h - 2)
+
+        # Actual lines used by SMI snapshot
+        observed_smi_lines = len(smi_snapshot)
+        
+        if config.settings["show_log"]:
+            # If log is shown, SMI takes what it needs up to max_smi
+            smi_lines = min(max_smi, observed_smi_lines)
+            log_h = max(1, max_y - smi_lines - error_h - 2)
+        else:
+            # If log is hidden, SMI takes all remaining space
+            smi_lines = max_y - error_h - 1
+            log_h = 0
+
+        # Auto-scroll adjustment
         if auto_scroll:
-            if total_raw != last_known_total_raw or curr_last_line_len != last_known_last_line_len:
+            if total_raw != last_known_total_raw or curr_last_line_len != last_known_last_line_len or log_h != pre_log_h:
                 scroll_pos, scroll_offset = find_scroll_start_for_bottom(log_h, render_width)
                 last_known_total_raw = total_raw
                 last_known_last_line_len = curr_last_line_len
+        else:
+            # Clamp scroll_pos if file truncated
+            if scroll_pos >= total_raw and total_raw > 0:
+                scroll_pos = total_raw - 1
+                scroll_offset = 0
 
-        scroll_pos, scroll_offset, auto_scroll, input_changed, smi_changed, quit_req = apply_input(
-            stdscr, keys, scroll_pos, scroll_offset, auto_scroll, log_h, render_width, smi_lines, 
-            build_visible_log_window(scroll_pos, scroll_offset, log_h, render_width))
-        if quit_req: break
-        if smi_changed or input_changed:
-            stdscr.clear()
-            if smi_changed: smi_reset_counter = SMI_RESET_FRAMES
-        input_was_active = bool(input_changed)
         visible_log_window = build_visible_log_window(scroll_pos, scroll_offset, log_h, render_width)
 
         if (input_changed or (max_y, max_x) != last_term_size or curr_smi_ver != last_smi_ver or 
@@ -414,50 +441,10 @@ def main(stdscr):
             render_dirty = True
         if not render_dirty: continue
 
+        # ── RENDER ───────────────────────────────────────────────────────
         for i in range(smi_lines):
             line = smi_snapshot[i] if i < len(smi_snapshot) else ""
-            if "CPU:" in line and ("RAM:" in line or "°C" in line):
-                parts, curr_x = line.split(" | "), 0
-                for idx, part in enumerate(parts):
-                    if idx > 0:
-                        try: stdscr.addstr(i, curr_x, " | "); curr_x += 3
-                        except curses.error: break
-                    if part.startswith("CPU:"):
-                        try: stdscr.addstr(i, curr_x, "CPU:", curses.A_BOLD); curr_x += 4
-                        except curses.error: break
-                        sub = part[4:].strip().split()
-                        for item in sub:
-                            val_str = item.replace("%", "").replace("°C", "")
-                            try:
-                                val = float(val_str); col = ui.get_temp_color(val) if "°C" in item else ui.get_val_color(val, 25, 50, 75, 90)
-                                if "°C" in item:
-                                    stdscr.addstr(i, curr_x, " 🌡 ", curses.A_REVERSE | col); curr_x += 3
-                                stdscr.addstr(i, curr_x, " " + item, col); curr_x += len(item) + 1
-                            except ValueError:
-                                stdscr.addstr(i, curr_x, " " + item); curr_x += len(item) + 1
-                    elif part.startswith("RAM:"):
-                        try: stdscr.addstr(i, curr_x, "RAM:", curses.A_BOLD); curr_x += 4
-                        except curses.error: break
-                        r_val = part[4:].strip()
-                        if "/" in r_val:
-                            try:
-                                u, t = map(float, [re.sub(r'[^0-9.]', '', s) for s in r_val.split('/')])
-                                pct = (u/t)*100 if t>0 else 0; col = ui.get_val_color(pct, 25, 50, 75, 90)
-                                if pct > 75: stdscr.addstr(i, curr_x, " !! ", curses.A_REVERSE | col); curr_x += 4
-                                stdscr.addstr(i, curr_x, " " + r_val, col); curr_x += len(r_val) + 1
-                            except Exception: stdscr.addstr(i, curr_x, " " + r_val); curr_x += len(r_val) + 1
-                    else:
-                        for s_p in part.split():
-                            if ":" in s_p:
-                                try:
-                                    n, v = s_p.split(":"); stdscr.addstr(i, curr_x, n + ":", curses.A_BOLD); curr_x += len(n)+1
-                                    col = ui.get_temp_color(float(v.replace("°C", ""))); stdscr.addstr(i, curr_x, v, col); curr_x += len(v)
-                                except Exception: stdscr.addstr(i, curr_x, s_p); curr_x += len(s_p)
-                            else: stdscr.addstr(i, curr_x, s_p); curr_x += len(s_p)
-                            stdscr.addstr(i, curr_x, " "); curr_x += 1
-                try: stdscr.clrtoeol()
-                except curses.error: pass
-            else: ui.render_ansi_line(stdscr, i, 0, line, max_x - 1)
+            ui.render_ansi_line(stdscr, i, 0, line, max_x - 1)
 
         if smi_lines < max_y:
             try: stdscr.addstr(smi_lines, 0, ("-" * (max_x-1))[:max_x-1], curses.A_REVERSE)

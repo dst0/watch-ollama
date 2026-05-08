@@ -204,6 +204,16 @@ def get_smi_snapshot():
     with smi_lock:
         return list(smi_text), latest_cpu_temp, smi_version
 
+def get_val_ansi_color(val, t1, t2, t3, t4):
+    if val < t1: return "\033[34m" # Blue
+    elif val < t2: return "\033[32m" # Green
+    elif val < t3: return "\033[33m" # Yellow
+    elif val < t4: return "\033[38;5;208m" # Orange
+    else: return "\033[31m" # Red
+
+def get_temp_ansi_color(temp):
+    return get_val_ansi_color(temp, 35, 55, 70, 85)
+
 def poll_smi(settings, set_error_func, render_event):
     while True:
         tool = detect_gpu_tool(settings["gpu_tool"])
@@ -225,19 +235,17 @@ def poll_smi(settings, set_error_func, render_event):
         cpu_temp, sys_temps = get_system_temps()
         ram_total, ram_avail, ram_used = get_ram_usage()
 
+        # Update sys_temps with GPU if nvidia-smi
         if tool == "nvidia-smi":
             try:
                 nv_out = subprocess.check_output(["nvidia-smi", "--query-gpu=index,temperature.gpu", "--format=csv,noheader"], text=True, errors="replace", stderr=subprocess.DEVNULL)
-                nv_entries = []
                 for nv_line in nv_out.strip().splitlines():
                     parts = [p.strip() for p in nv_line.split(",")]
                     if len(parts) >= 2 and parts[1].lstrip("-").isdigit():
-                        nv_entries.append((int(parts[0]), float(parts[1])))
-                multi_gpu = len(nv_entries) > 1
-                for idx, temp in nv_entries:
-                    label = f"GPU{idx}" if multi_gpu else "GPU"
-                    sys_temps.append(f"{label}:{temp:.0f}°C")
-                    cpu_temp = max(cpu_temp, temp)
+                        idx, temp = int(parts[0]), float(parts[1])
+                        label = f"GPU{idx}" if idx > 0 else "GPU"
+                        sys_temps.append(f"{label}:{temp:.0f}°C")
+                        cpu_temp = max(cpu_temp, temp)
             except Exception: pass
         
         num_parallel = get_ollama_num_parallel()
@@ -276,9 +284,30 @@ def poll_smi(settings, set_error_func, render_event):
         if settings["show_cpu"]:
             full_smi_lines.append("")
             freq_str = f" {get_cpu_freq()/1000:.1f}GHz" if get_cpu_freq() >= 1000 else f" {get_cpu_freq():.0f}MHz" if get_cpu_freq() > 0 else ""
-            cpu_line = f"CPU:{cpu_load:2.0f}%{freq_str} {cpu_temp:2.0f}°C"
-            if ram_total > 0: cpu_line += f" | RAM:{ram_used:.1f}/{ram_total:.1f}GiB"
-            if sys_temps: cpu_line += " | " + " ".join(sys_temps)
+            
+            cpu_color = get_val_ansi_color(cpu_load, 25, 50, 75, 90)
+            temp_color = get_temp_ansi_color(cpu_temp)
+            
+            cpu_line = f"CPU:{cpu_color}{cpu_load:2.0f}%\033[0m{freq_str} {temp_color}{cpu_temp:2.0f}°C\033[0m"
+            
+            if ram_total > 0:
+                ram_pct = (ram_used / ram_total) * 100
+                ram_color = get_val_ansi_color(ram_pct, 25, 50, 75, 90)
+                cpu_line += f" | RAM:{ram_color}{ram_used:.1f}/{ram_total:.1f}GiB\033[0m"
+            
+            if sys_temps:
+                colored_temps = []
+                for t_str in sys_temps:
+                    if ":" in t_str:
+                        label, val_s = t_str.split(":")
+                        try:
+                            t_val = float(val_s.replace("°C", ""))
+                            c = get_temp_ansi_color(t_val)
+                            colored_temps.append(f"{label}:{c}{val_s}\033[0m")
+                        except ValueError: colored_temps.append(t_str)
+                    else: colored_temps.append(t_str)
+                cpu_line += " | " + " ".join(colored_temps)
+            
             full_smi_lines.append(cpu_line)
         if settings["show_gpu"]:
             full_smi_lines.append("")
