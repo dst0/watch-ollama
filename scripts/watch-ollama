@@ -77,11 +77,10 @@ def get_cached_log_entry(abs_idx, raw_content, width):
     return entry
 
 def line_is_in_thought(source_idx):
-    if source_idx in thought_cache: return thought_cache[source_idx]
-    in_thought = False
     # Only scan back 500 lines
+    in_thought = False
     for j in range(source_idx, max(-1, source_idx - 500), -1):
-        if j in thought_cache:
+        if j != source_idx and j in thought_cache:
             in_thought = thought_cache[j]
             break
         check_line = ui.sanitize_render_text(log_indexer.get_line(j))
@@ -94,7 +93,11 @@ def line_is_in_thought(source_idx):
         if ui.line_closes_thought(check_line) or ui.is_separator_line(check_line):
             in_thought = False
             break
-    thought_cache[source_idx] = in_thought
+    
+    # Cache all except the potentially changing last line
+    total_raw = len(log_indexer)
+    if source_idx < total_raw - 1:
+        thought_cache[source_idx] = in_thought
     return in_thought
 
 def build_visible_log_window(scroll_pos, scroll_offset, log_h, width):
@@ -110,12 +113,21 @@ def build_visible_log_window(scroll_pos, scroll_offset, log_h, width):
             if len(visible) >= log_h: break
         curr_raw += 1
         curr_off = 0
+    
+    # Cleanup log_cache periodically (Log cache is expensive, but thought_cache is cheap booleans)
     if len(log_cache) > LOG_WINDOW_SIZE * 2:
         current_range = set(range(max(0, scroll_pos - 1000), min(total_raw, scroll_pos + LOG_WINDOW_SIZE + 1000)))
         for k in list(log_cache.keys()):
             if k not in current_range:
                 del log_cache[k]
-                if k in thought_cache: del thought_cache[k]
+    
+    # Cleanup thought_cache less aggressively (keep 1M entries for performance)
+    if len(thought_cache) > 1000000:
+        current_range = set(range(max(0, scroll_pos - 500000), min(total_raw, scroll_pos + 500000)))
+        for k in list(thought_cache.keys()):
+            if k not in current_range:
+                del thought_cache[k]
+                
     return visible
 
 def get_line_segments_count(raw_idx, width):
@@ -423,15 +435,29 @@ def main(stdscr):
 
         # Auto-scroll adjustment
         if auto_scroll:
-            if total_raw != last_known_total_raw or curr_last_line_len != last_known_last_line_len or log_h != pre_log_h:
+            if (total_raw != last_known_total_raw or 
+                curr_last_line_len != last_known_last_line_len or 
+                log_h != pre_log_h or 
+                auto_scroll != last_auto):
                 scroll_pos, scroll_offset = find_scroll_start_for_bottom(log_h, render_width)
                 last_known_total_raw = total_raw
                 last_known_last_line_len = curr_last_line_len
         else:
-            # Clamp scroll_pos if file truncated
+            # Detect rotation even in paused mode
+            if total_raw < last_known_total_raw:
+                # File rotated/truncated
+                log_cache.clear()
+                thought_cache.clear()
+                scroll_pos = 0
+                scroll_offset = 0
+            
+            # Clamp scroll_pos if file truncated/changed
             if scroll_pos >= total_raw and total_raw > 0:
                 scroll_pos = total_raw - 1
                 scroll_offset = 0
+            
+            last_known_total_raw = total_raw
+            last_known_last_line_len = curr_last_line_len
 
         visible_log_window = build_visible_log_window(scroll_pos, scroll_offset, log_h, render_width)
 
