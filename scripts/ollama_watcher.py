@@ -120,6 +120,9 @@ def main():
         f = open(RAW_LOG, "r", errors="replace")
         f.seek(0, os.SEEK_END)
         
+        # Keep readable log open for appending
+        out_f = open(READABLE_LOG, "a")
+        
         # State variables for manual speed calculation
         generation_start_time = 0
         prompt_eval_count = 0
@@ -164,23 +167,14 @@ def main():
                 match = re.search(r'msg=encoded string="(.*)" ids=', line)
                 if match:
                     raw_prompt = match.group(1)
-                    # If this is exactly the same raw prompt as the one we just started,
-                    # it's likely just a duplicate log entry from Ollama's pipeline.
                     if in_generation and raw_prompt == last_prompt_raw:
                         continue
                     
-                    # If we were already in generation, it means we missed the finish signal
-                    # for the previous prompt. Force close it now.
                     if in_generation:
-                        with open(READABLE_LOG, "a") as out:
-                            out.write(f"\n\n[GENERATION INTERRUPTED BY NEW PROMPT]\n")
-                            out.write(f"{'-'*80}\n")
-                            out.flush()
+                        out_f.write("\n[INTERRUPTED]\n")
                         in_generation = False
 
                     last_prompt_raw = raw_prompt
-                    
-                    # Reset log metrics for new prompt
                     log_metrics = {k: 0 for k in log_metrics}
                     log_metrics['prompt_eval_duration'] = 0.0
                     log_metrics['eval_duration'] = 0.0
@@ -189,30 +183,24 @@ def main():
                     formatted_prompt = format_text(prompt)
                     timestamp = time.strftime("%H:%M:%S")
                     
-                    # Look for prompt token count if available in the same line or next
                     ids_match = re.search(r'ids="?\[(.*?)"?\]', line)
-                    if ids_match:
-                        prompt_eval_count = len(ids_match.group(1).split())
-                    else:
-                        prompt_eval_count = 0
+                    prompt_eval_count = len(ids_match.group(1).split()) if ids_match else 0
                     
-                    # Distinguish automated follow-up suggestion requests from Open WebUI
                     if "Suggest 3-5 relevant follow-up questions" in formatted_prompt:
-                        header = f"\n\n{'='*80}\n{timestamp} [FOLLOW-UP SUGGESTIONS]\n{'='*80}\n"
+                        header = f"\n{'='*40} {timestamp} [FOLLOW-UP] {'='*40}\n"
                     else:
-                        header = f"\n\n{'='*80}\n{timestamp} [NEW PROMPT - GENERATION STARTED]\n{'='*80}\n"
+                        header = f"\n{'='*40} {timestamp} [PROMPT] {'='*40}\n"
 
                     prompt_start_time = time.time()
                     eval_count = 0
                     in_generation = True
                     needs_assistant_marker = not prompt_ends_with_assistant_marker(formatted_prompt)
 
-                    with open(READABLE_LOG, "a") as out:
-                        out.write(header)
-                        out.write(formatted_prompt + "\n")
-                        if needs_assistant_marker:
-                            out.write("### ASSISTANT\n")
-                        out.flush()
+                    out_f.write(header)
+                    out_f.write(formatted_prompt + "\n")
+                    if needs_assistant_marker:
+                        out_f.write("### ASSISTANT\n")
+                    out_f.flush()
 
             # --- PREFILL ---
             elif 'level=INFO' in line and 'msg="prefill in progress"' in line:
@@ -224,34 +212,26 @@ def main():
                         elapsed = time.time() - prompt_start_time
                         pp_speed = int(processed) / elapsed if elapsed > 0 else 0
                         pct = int((int(processed) / int(total)) * 100) if int(total) > 0 else 0
-                        # Only log every 10% or if finished to avoid flooding
                         if int(processed) % max(1, (int(total) // 10)) == 0 or processed == total:
-                            with open(READABLE_LOG, "a") as out:
-                                out.write(f"[Prefill Progress: {processed}/{total} ({pct}%) - {pp_speed:.1f} PP/s]\n")
-                                out.flush()
+                            out_f.write(f"[Prefill Progress: {processed}/{total} ({pct}%) - {pp_speed:.1f} PP/s]\n")
+                            out_f.flush()
 
             # --- TOKENS (GENERATION) ---
             elif "msg=decoded string=" in line:
                 if eval_count == 0:
-                    generation_start_time = time.time() # Mark when first token arrives
+                    generation_start_time = time.time()
                 eval_count += 1
                 
                 match = re.search(r'msg=decoded string=(.*?)\s+from=\[', line)
                 if match:
                     val = match.group(1)
-                    if val.startswith('"') and val.endswith('"') and len(val) >= 2:
-                        token = decode_go_string(val[1:-1])
-                    else:
-                        token = decode_go_string(val)
+                    token = decode_go_string(val[1:-1]) if val.startswith('"') and val.endswith('"') and len(val) >= 2 else decode_go_string(val)
                     token = sanitize_decoded_text(token)
-                        
-                    with open(READABLE_LOG, "a") as out:
-                        out.write(token)
-                        out.flush()
+                    out_f.write(token)
+                    out_f.flush()
 
-            # --- GENERAL STATUS (Pass-through for other INFO/WARN/ERROR) ---
+            # --- GENERAL STATUS ---
             elif any(lvl in line for lvl in ['level=INFO', 'level=WARN', 'level=ERROR']):
-                # Skip messages we've already handled or are definitely noise
                 if any(noise in line for noise in ['msg="request complete"', 'msg="prefill in progress"']):
                     continue
                 
@@ -259,69 +239,57 @@ def main():
                 if m:
                     msg = m.group(1)
                     ts = time.strftime("%H:%M:%S")
-                    lvl_tag = ""
-                    if 'level=WARN' in line: lvl_tag = "[WARN] "
-                    elif 'level=ERROR' in line: lvl_tag = "[ERROR] "
-                    
-                    with open(READABLE_LOG, "a") as out:
-                        out.write(f"[{ts}] {lvl_tag}{msg}\n")
-                        out.flush()
+                    lvl_tag = "[WARN] " if 'level=WARN' in line else "[ERROR] " if 'level=ERROR' in line else ""
+                    out_f.write(f"[{ts}] {lvl_tag}{msg}\n")
+                    out_f.flush()
             
             # --- STOPPED / ERROR ---
             if in_generation and ('msg="llama runner terminated"' in line or 'msg="context cancelled"' in line or 'msg="context for request finished"' in line):
                 in_generation = False
-                timestamp = time.strftime("%H:%M:%S")
-                with open(READABLE_LOG, "a") as out:
-                    out.write(f"\n\n[GENERATION STOPPED] {timestamp} - {line.strip()}\n")
-                    out.write(f"{'-'*80}\n")
-                    out.flush()
+                out_f.write(f"\n[STOPPED] {time.strftime('%H:%M:%S')} - {line.strip()}\n{'-'*20}\n")
+                out_f.flush()
 
             # --- FINISHED / API METRICS ---
             if in_generation and '[GIN]' in line and 'POST' in line and any(x in line for x in ['/api/generate', '/api/chat', '/v1/chat/completions', '/v1/completions', '/v1/responses']):
                 in_generation = False
-                # Add a brief cooldown to prevent immediate triggers from rapid requests
                 time.sleep(0.2)
                 
                 latency = "N/A"
                 latency_match = re.search(r'\|\s*([0-9ms.µsh]+)\s*\|', line)
-                if latency_match:
-                    latency = latency_match.group(1).strip()
+                if latency_match: latency = latency_match.group(1).strip()
                 
                 status_match = re.search(r'\|\s*(\d{3})\s*\|', line)
                 status = status_match.group(1) if status_match else "???"
 
                 if status.startswith('2'):
                     stats_str = f"[LATENCY: {latency}]"
-                    
-                    # Use log-based metrics if available, otherwise fall back to manual
                     if log_metrics['eval_count'] > 0 and log_metrics['eval_duration'] > 0:
                         eval_c = log_metrics['eval_count']
-                        tps = eval_c / log_metrics['eval_duration']
-                        stats_str += f" [GEN: {eval_c} tokens | {tps:.2f} t/s]"
+                        stats_str += f" [GEN: {eval_c} tokens | {eval_c / log_metrics['eval_duration']:.2f} t/s]"
                     elif eval_count > 0 and generation_start_time > 0:
                         gen_duration = time.time() - generation_start_time
-                        tps = eval_count / gen_duration if gen_duration > 0 else 0
-                        stats_str += f" [GEN: {eval_count} tokens | {tps:.2f} t/s]"
+                        stats_str += f" [GEN: {eval_count} tokens | {eval_count / gen_duration if gen_duration > 0 else 0:.2f} t/s]"
                         
                     if log_metrics['prompt_eval_count'] > 0 and log_metrics['prompt_eval_duration'] > 0:
                         prompt_c = log_metrics['prompt_eval_count']
-                        pps = prompt_c / log_metrics['prompt_eval_duration']
-                        stats_str += f" [PP: {prompt_c} tokens | {pps:.2f} pp/s]"
+                        stats_str += f" [PP: {prompt_c} tokens | {prompt_c / log_metrics['prompt_eval_duration']:.2f} pp/s]"
                     elif prompt_eval_count > 0 and prompt_start_time > 0 and generation_start_time > 0:
                         pp_duration = generation_start_time - prompt_start_time
-                        pps = prompt_eval_count / pp_duration if pp_duration > 0 else 0
-                        stats_str += f" [PP: {prompt_eval_count} tokens | {pps:.2f} pp/s]"
+                        stats_str += f" [PP: {prompt_eval_count} tokens | {prompt_eval_count / pp_duration if pp_duration > 0 else 0:.2f} pp/s]"
 
-                    with open(READABLE_LOG, "a") as out:
-                        out.write(f"\n\n[GENERATION FINISHED] {stats_str}\n")
-                        out.write(f"{'-'*80}\n")
-                        out.flush()
+                    out_f.write(f"\n[DONE] {stats_str}\n{'-'*20}\n")
+                    out_f.flush()
                 else:
-                    # Log non-2xx status as a stop
-                    with open(READABLE_LOG, "a") as out:
-                        out.write(f"\n\n[GENERATION STOPPED] {timestamp} - Status: {status}\n")
-                        out.write(f"{'-'*80}\n")
-                        out.flush()
+                    out_f.write(f"\n[STOPPED] {time.strftime('%H:%M:%S')} - Status: {status}\n{'-'*20}\n")
+                    out_f.flush()
+
+    except Exception as e:
+        try:
+            with open(READABLE_LOG, "a") as err_out:
+                err_out.write(f"\nWATCHER FATAL ERROR: {e}\n")
+                err_out.flush()
+        except Exception: pass
+        sys.exit(1)
 
     except Exception as e:
         try:

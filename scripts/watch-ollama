@@ -258,7 +258,8 @@ def apply_input(stdscr, keys, scroll_pos, scroll_offset, auto_scroll, log_h, ren
                                 raw_idx, seg_off, _, _ = visible_log_window[view_idx]
                                 selection.end, changed = (raw_idx, seg_off, mx), True
                 except curses.error: pass
-    if auto_scroll: scroll_pos, scroll_offset = find_scroll_start_for_bottom(log_h, render_width)
+    if auto_scroll:
+        pass # Recalculated in main loop for better stability
     else:
         if scroll_pos >= total_raw: scroll_pos = max(0, total_raw - 1)
         seg_count = get_line_segments_count(scroll_pos, render_width)
@@ -268,17 +269,32 @@ def apply_input(stdscr, keys, scroll_pos, scroll_offset, auto_scroll, log_h, ren
 def tail_log():
     global last_log_update, log_version, _tail_proc
     try:
-        _tail_proc = subprocess.Popen(['tail', '-f', '-n', '0', READABLE_LOG], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # tail -f with a small buffer for responsiveness
+        _tail_proc = subprocess.Popen(
+            ['tail', '-f', '-n', '0', READABLE_LOG],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0  # unbuffered
+        )
+        # Set non-blocking on stdout
+        fd = _tail_proc.stdout.fileno()
+        os.set_blocking(fd, False)
+        
         log_ready.set()
         while True:
-            line = _tail_proc.stdout.readline()
-            if not line:
-                if _tail_proc.poll() is not None: break
-                continue
-            last_log_update = time.time()
-            with log_lock:
-                if log_indexer.update(): log_version += 1
-            render_event.set()
+            try:
+                # Read whatever is available
+                chunk = _tail_proc.stdout.read(4096)
+                if chunk:
+                    last_log_update = time.time()
+                    with log_lock:
+                        if log_indexer.update(): log_version += 1
+                    render_event.set()
+                else:
+                    if _tail_proc.poll() is not None: break
+                    time.sleep(0.05)
+            except (BlockingIOError, TypeError):
+                time.sleep(0.05)
     except Exception as e: set_error("log", f"Log tail error: {e}"); log_ready.set()
 
 def toggle_mouse(stdscr, enable):
@@ -339,7 +355,12 @@ def main(stdscr):
     last_term_size, last_smi_ver, last_log_ver = (-1, -1), -1, -1
     last_error_sig, last_scroll, last_auto, input_was_active = (), (-1, -1), None, False
 
+    # State for auto-scroll stability
+    last_known_total_raw = -1
+    last_known_last_line_len = -1
+
     while True:
+        # ── IDLE WAIT ────────────────────────────────────────────────────
         if not render_dirty:
             wait_s = 0.02 if (time.time() - last_log_update < 1.0) else (IDLE_WAIT_AFTER_INPUT if input_was_active else IDLE_WAIT_DEFAULT)
             render_event.wait(timeout=wait_s); render_event.clear()
@@ -351,8 +372,16 @@ def main(stdscr):
         smi_snapshot, cpu_temp, curr_smi_ver = telemetry.get_smi_snapshot()
         render_width = max(1, max_x - 1)
         active_errors = get_error_lines(render_width); error_h = min(2, len(active_errors))
-        with log_lock: curr_log_ver = log_version
+        
+        with log_lock:
+            curr_log_ver = log_version
+            total_raw = len(log_indexer)
+            # Efficiently check if last line changed without full read if possible
+            # But get_line is fast enough with open file handle
+            last_line = log_indexer.get_line(total_raw - 1) if total_raw > 0 else ""
+            curr_last_line_len = len(last_line)
 
+        # ── LAYOUT ───────────────────────────────────────────────────────
         max_smi = max(5, (max_y * 2) // 3) if config.settings["show_log"] else max(5, max_y - error_h - 2)
         if smi_reset_counter > 0: reserved_smi_lines_by_height.clear(); smi_reset_counter -= 1
         smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
@@ -361,6 +390,13 @@ def main(stdscr):
         reserved_smi_lines_by_height[max_y] = smi_lines
         log_h = max(1, max_y - smi_lines - error_h - 2) if config.settings["show_log"] else 0
         if not config.settings["show_log"]: smi_lines = max_y - error_h - 1
+
+        # Check for changes that should trigger auto-scroll update
+        if auto_scroll:
+            if total_raw != last_known_total_raw or curr_last_line_len != last_known_last_line_len:
+                scroll_pos, scroll_offset = find_scroll_start_for_bottom(log_h, render_width)
+                last_known_total_raw = total_raw
+                last_known_last_line_len = curr_last_line_len
 
         scroll_pos, scroll_offset, auto_scroll, input_changed, smi_changed, quit_req = apply_input(
             stdscr, keys, scroll_pos, scroll_offset, auto_scroll, log_h, render_width, smi_lines, 

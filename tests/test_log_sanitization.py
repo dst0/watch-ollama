@@ -170,8 +170,7 @@ class LogSanitizationTests(unittest.TestCase):
         
         # Near bottom. SCROLL_LINE_STEP is 3. 
         # If we are at 98, one KEY_DOWN takes us to 99 and sets auto_scroll=True.
-        # When auto_scroll=True, scroll_pos is recalculated via find_scroll_start_for_bottom(log_h=10)
-        # 100 - 10 = 90.
+        # scroll_pos stays 99 because recalculation moved to main loop.
         scroll_pos, scroll_offset, auto_scroll, changed, smi_changed, quit_req = TUI.apply_input(
             None, [curses.KEY_DOWN],
             scroll_pos=98, scroll_offset=0, auto_scroll=False,
@@ -179,7 +178,7 @@ class LogSanitizationTests(unittest.TestCase):
         )
 
         self.assertTrue(auto_scroll)
-        self.assertEqual(scroll_pos, 90)
+        self.assertEqual(scroll_pos, 99)
         self.assertTrue(changed)
 
     def test_tui_startup_logo_has_fixed_minimum_duration(self):
