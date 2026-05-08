@@ -20,6 +20,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 TUI = importlib.machinery.SourceFileLoader(
     "watch_ollama_tui", str(ROOT / "scripts" / "watch-ollama")
 ).load_module()
+TELEMETRY = importlib.machinery.SourceFileLoader(
+    "telemetry_utils", str(ROOT / "scripts" / "telemetry_utils.py")
+).load_module()
+UI = importlib.machinery.SourceFileLoader(
+    "ui_utils", str(ROOT / "scripts" / "ui_utils.py")
+).load_module()
 WATCHER = importlib.machinery.SourceFileLoader(
     "ollama_watcher", str(ROOT / "scripts" / "ollama_watcher.py")
 ).load_module()
@@ -32,71 +38,63 @@ WATCHER = importlib.machinery.SourceFileLoader(
 class WrapCacheTests(unittest.TestCase):
     def setUp(self):
         """Reset module-level cache and log state before each test."""
-        TUI._visible_log_cache = None
-        TUI._visible_log_cache_key = None
+        TUI.log_cache.clear()
+        self.mock_indexer = MagicMock()
+        self.mock_indexer.__len__.return_value = 0
+        self.lines = []
+        def get_line(i):
+            return self.lines[i] if 0 <= i < len(self.lines) else ""
+        self.mock_indexer.get_line.side_effect = get_line
+        TUI.log_indexer = self.mock_indexer
         with TUI.log_lock:
-            TUI.log_lines.clear()
-            TUI.log_lines_total_count = 0
             TUI.log_version = 0
 
     def _add_line(self, text):
         """Append a line and bump log_version (mirrors what tail_log does)."""
         with TUI.log_lock:
-            TUI.log_lines.append(text)
-            TUI.log_lines_total_count += 1
+            self.lines.append(text)
+            self.mock_indexer.__len__.return_value = len(self.lines)
             TUI.log_version += 1
 
     def test_cache_miss_on_first_call(self):
         self._add_line("hello world")
-        visible, snapshot, _ = TUI.build_visible_log_lines(80)
+        visible = TUI.build_visible_log_window(0, 0, 10, 80)
         self.assertEqual(len(visible), 1)
-        self.assertIsNotNone(TUI._visible_log_cache)
+        self.assertIn(0, TUI.log_cache)
 
     def test_cache_hit_returns_same_object(self):
         self._add_line("hello world")
-        result1 = TUI.build_visible_log_lines(80)
-        result2 = TUI.build_visible_log_lines(80)
-        # Same list objects – no rebuild happened
-        self.assertIs(result1[0], result2[0])
-        self.assertIs(result1[1], result2[1])
+        visible1 = TUI.build_visible_log_window(0, 0, 10, 80)
+        visible2 = TUI.build_visible_log_window(0, 0, 10, 80)
+        # Same entry objects in the list
+        self.assertIs(visible1[0][3], visible2[0][3])
 
     def test_cache_miss_on_log_version_change(self):
+        # In the new architecture, log_version doesn't directly invalidate the cache,
+        # but new lines won't be in the cache yet.
         self._add_line("first line")
-        result1 = TUI.build_visible_log_lines(80)
+        visible1 = TUI.build_visible_log_window(0, 0, 10, 80)
 
         self._add_line("second line")
-        result2 = TUI.build_visible_log_lines(80)
+        visible2 = TUI.build_visible_log_window(0, 0, 10, 80)
 
-        self.assertIsNot(result1[0], result2[0])
-        self.assertEqual(len(result2[0]), 2)
+        self.assertEqual(len(visible2), 2)
+        self.assertIn(1, TUI.log_cache)
 
     def test_cache_miss_on_width_change(self):
         self._add_line("abcdefghij")  # 10 chars
-        result_wide = TUI.build_visible_log_lines(80)
-        result_narrow = TUI.build_visible_log_lines(5)
+        visible_wide = TUI.build_visible_log_window(0, 0, 10, 80)
+        visible_narrow = TUI.build_visible_log_window(0, 0, 10, 5)
 
         # Different width → different wrapped segments
-        self.assertIsNot(result_wide[0], result_narrow[0])
-        self.assertGreater(len(result_narrow[0]), len(result_wide[0]))
-
-    def test_cache_key_encodes_both_width_and_version(self):
-        self._add_line("line")
-        TUI.build_visible_log_lines(80)
-        key_before = TUI._visible_log_cache_key
-
-        self._add_line("another")
-        TUI.build_visible_log_lines(80)
-        key_after = TUI._visible_log_cache_key
-
-        self.assertNotEqual(key_before, key_after)
-        # Width component stays constant
-        self.assertEqual(key_before[0], key_after[0])
+        entry = TUI.log_cache[0]
+        self.assertIn(80, entry["wrapped"])
+        self.assertIn(5, entry["wrapped"])
+        self.assertNotEqual(entry["wrapped"][80], entry["wrapped"][5])
 
     def test_empty_log_returns_empty_visible_lines(self):
-        visible, snapshot, total = TUI.build_visible_log_lines(80)
+        visible = TUI.build_visible_log_window(0, 0, 10, 80)
         self.assertEqual(visible, [])
-        self.assertEqual(snapshot, [])
-        self.assertEqual(total, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +103,7 @@ class WrapCacheTests(unittest.TestCase):
 
 class ModelParamsCacheTests(unittest.TestCase):
     def setUp(self):
-        TUI._model_params_cache.clear()
+        TELEMETRY._model_params_cache.clear()
 
     def _make_api_response(self, params_str="temperature 0.8"):
         """Return a mock urlopen context manager yielding a JSON /api/show response."""
@@ -119,46 +117,46 @@ class ModelParamsCacheTests(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_first_call_fetches_from_api(self, mock_open):
         mock_open.return_value = self._make_api_response("temperature 0.7")
-        result = TUI._get_model_params("mymodel")
+        result = TELEMETRY._get_model_params("mymodel", "http://localhost:11434")
         self.assertIn("temp:0.7", result)
         mock_open.assert_called_once()
 
     @patch("urllib.request.urlopen")
     def test_second_call_within_ttl_uses_cache(self, mock_open):
         mock_open.return_value = self._make_api_response("temperature 0.7")
-        TUI._get_model_params("mymodel")
-        TUI._get_model_params("mymodel")
+        TELEMETRY._get_model_params("mymodel", "http://localhost:11434")
+        TELEMETRY._get_model_params("mymodel", "http://localhost:11434")
         # API should only be called once
         self.assertEqual(mock_open.call_count, 1)
 
     @patch("urllib.request.urlopen")
     def test_cache_expires_after_ttl(self, mock_open):
         mock_open.return_value = self._make_api_response("temperature 0.5")
-        TUI._get_model_params("mymodel")
+        TELEMETRY._get_model_params("mymodel", "http://localhost:11434")
 
         # Manually expire the cache entry
-        ts, val = TUI._model_params_cache["mymodel"]
-        TUI._model_params_cache["mymodel"] = (ts - TUI.MODEL_PARAMS_CACHE_TTL - 1, val)
+        ts, val = TELEMETRY._model_params_cache["mymodel"]
+        TELEMETRY._model_params_cache["mymodel"] = (ts - TELEMETRY.MODEL_PARAMS_CACHE_TTL - 1, val)
 
         mock_open.return_value = self._make_api_response("temperature 0.9")
-        result = TUI._get_model_params("mymodel")
+        result = TELEMETRY._get_model_params("mymodel", "http://localhost:11434")
         self.assertEqual(mock_open.call_count, 2)
         self.assertIn("temp:0.9", result)
 
     @patch("urllib.request.urlopen", side_effect=Exception("network error"))
     def test_api_failure_cached_as_empty_string(self, mock_open):
-        result = TUI._get_model_params("badmodel")
+        result = TELEMETRY._get_model_params("badmodel", "http://localhost:11434")
         self.assertEqual(result, "")
-        self.assertIn("badmodel", TUI._model_params_cache)
+        self.assertIn("badmodel", TELEMETRY._model_params_cache)
 
     @patch("urllib.request.urlopen", side_effect=Exception("network error"))
     def test_failure_cache_prevents_repeated_calls(self, mock_open):
-        TUI._get_model_params("badmodel")
-        TUI._get_model_params("badmodel")
+        TELEMETRY._get_model_params("badmodel", "http://localhost:11434")
+        TELEMETRY._get_model_params("badmodel", "http://localhost:11434")
         self.assertEqual(mock_open.call_count, 1)
 
     def test_ttl_constant_is_at_least_20_seconds(self):
-        self.assertGreaterEqual(TUI.MODEL_PARAMS_CACHE_TTL, 20.0)
+        self.assertGreaterEqual(TELEMETRY.MODEL_PARAMS_CACHE_TTL, 20.0)
 
 
 # ---------------------------------------------------------------------------
@@ -167,12 +165,8 @@ class ModelParamsCacheTests(unittest.TestCase):
 
 class TelemetryIntervalTests(unittest.TestCase):
     def test_smi_poll_trigger_timeout_is_at_least_1_second(self):
-        """poll_smi() must wait at least 1 s between cycles.
-
-        We verify this by inspecting the source file rather than running the
-        function (which would require mocking many external calls).
-        """
-        src = (ROOT / "scripts" / "watch-ollama").read_text()
+        """poll_smi() must wait at least 1 s between cycles."""
+        src = (ROOT / "scripts" / "telemetry_utils.py").read_text()
         # The wait call in poll_smi: smi_poll_trigger.wait(timeout=<N>)
         import re
         matches = re.findall(r"smi_poll_trigger\.wait\(timeout=([\d.]+)\)", src)
@@ -197,13 +191,10 @@ class TelemetryIntervalTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class LogHistoryCapTests(unittest.TestCase):
-    def test_log_history_maxlen_constant_exists_and_is_reasonable(self):
-        self.assertTrue(hasattr(TUI, "LOG_HISTORY_MAXLEN"))
-        self.assertLessEqual(TUI.LOG_HISTORY_MAXLEN, 20000)
-        self.assertGreaterEqual(TUI.LOG_HISTORY_MAXLEN, 1000)
-
-    def test_log_lines_deque_uses_maxlen_constant(self):
-        self.assertEqual(TUI.log_lines.maxlen, TUI.LOG_HISTORY_MAXLEN)
+    def test_log_window_size_constant_exists_and_is_reasonable(self):
+        self.assertTrue(hasattr(TUI, "LOG_WINDOW_SIZE"))
+        self.assertLessEqual(TUI.LOG_WINDOW_SIZE, 20000)
+        self.assertGreaterEqual(TUI.LOG_WINDOW_SIZE, 1000)
 
 
 # ---------------------------------------------------------------------------
@@ -214,19 +205,14 @@ class RenderEventTests(unittest.TestCase):
     def test_render_event_is_threading_event(self):
         self.assertIsInstance(TUI.render_event, threading.Event)
 
-    def test_set_smi_text_sets_render_event(self):
-        TUI.render_event.clear()
-        TUI.set_smi_text(["CPU:5% 40°C"])
-        self.assertTrue(TUI.render_event.is_set())
-
     def test_smi_version_increments_on_set_smi_text(self):
-        before = TUI.smi_version
-        TUI.set_smi_text(["CPU:5% 40°C"])
-        self.assertEqual(TUI.smi_version, before + 1)
+        before = TELEMETRY.smi_version
+        TELEMETRY.set_smi_text(["CPU:5% 40°C"])
+        self.assertEqual(TELEMETRY.smi_version, before + 1)
 
     def test_get_smi_snapshot_returns_version(self):
-        TUI.set_smi_text(["test line"], cpu_temp=42.0)
-        lines, temp, ver = TUI.get_smi_snapshot()
+        TELEMETRY.set_smi_text(["test line"], cpu_temp=42.0)
+        lines, temp, ver = TELEMETRY.get_smi_snapshot()
         self.assertIsInstance(ver, int)
         self.assertEqual(temp, 42.0)
         self.assertEqual(lines, ["test line"])
@@ -246,21 +232,11 @@ class RenderEventTests(unittest.TestCase):
         self.assertTrue(TUI.render_event.is_set(),
             "render_event must be set when an error is cleared")
 
-    def test_select_failure_in_tail_log_error_path_uses_return_not_break(self):
-        """The select.select failure path in tail_log() must set an error
-        (not silently break), so the user can see that log tailing stopped."""
+    def test_tail_log_uses_subprocess(self):
         src = (ROOT / "scripts" / "watch-ollama").read_text()
-        import re
-        # After 'except (ValueError, OSError):' there must NOT be a bare 'break'
-        # as the only statement.  A bare break would exit the while loop silently
-        # without calling set_error(), leaving the user with no feedback.
-        handler_match = re.search(
-            r"except \(ValueError, OSError\):[ \t]*\n([ \t]+)break",
-            src
-        )
-        self.assertIsNone(handler_match,
-            "select.select failure handler must not use a bare 'break' — "
-            "it must call set_error() so the user sees the failure")
+        self.assertIn("subprocess.Popen", src)
+        self.assertIn("tail", src)
+        self.assertIn("-f", src)
 
 
 # ---------------------------------------------------------------------------

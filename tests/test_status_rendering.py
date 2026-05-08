@@ -8,29 +8,34 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 TUI = importlib.machinery.SourceFileLoader(
     "watch_ollama_tui", str(ROOT / "scripts" / "watch-ollama")
 ).load_module()
+TELEMETRY = importlib.machinery.SourceFileLoader(
+    "telemetry_utils", str(ROOT / "scripts" / "telemetry_utils.py")
+).load_module()
+UI = importlib.machinery.SourceFileLoader(
+    "ui_utils", str(ROOT / "scripts" / "ui_utils.py")
+).load_module()
 
 class StatusRenderingTests(unittest.TestCase):
     def test_get_val_color_thresholds(self):
-        # Mock color_pair_func to return the index passed to it
-        cp = lambda n: n
-        
-        # Blue (Cold) < 35
-        self.assertEqual(TUI.get_val_color(30, 35, 55, 70, 85, cp), 5)
-        # Green (Optimal) < 55
-        self.assertEqual(TUI.get_val_color(40, 35, 55, 70, 85, cp), 2)
-        # Yellow (Warm) < 70
-        self.assertEqual(TUI.get_val_color(60, 35, 55, 70, 85, cp), 3)
-        # Orange (Hot-Warm) < 85
-        self.assertEqual(TUI.get_val_color(77, 35, 55, 70, 85, cp), 6)
-        # Red (Hot) >= 85
-        self.assertEqual(TUI.get_val_color(90, 35, 55, 70, 85, cp), 11)
+        # Mock curses.color_pair to return the index passed to it
+        with patch('curses.color_pair', side_effect=lambda n: n):
+            # Blue (Cold) < 35
+            self.assertEqual(UI.get_val_color(30, 35, 55, 70, 85), 5)
+            # Green (Optimal) < 55
+            self.assertEqual(UI.get_val_color(40, 35, 55, 70, 85), 2)
+            # Yellow (Warm) < 70
+            self.assertEqual(UI.get_val_color(60, 35, 55, 70, 85), 3)
+            # Orange (Hot-Warm) < 85
+            self.assertEqual(UI.get_val_color(77, 35, 55, 70, 85), 6)
+            # Red (Hot) >= 85
+            self.assertEqual(UI.get_val_color(90, 35, 55, 70, 85), 11)
 
     def test_get_temp_color_uses_correct_thresholds(self):
-        cp = lambda n: n
-        # 77 should be Orange (6)
-        self.assertEqual(TUI.get_temp_color(77, cp), 6)
-        # 30 should be Blue (5)
-        self.assertEqual(TUI.get_temp_color(30, cp), 5)
+        with patch('curses.color_pair', side_effect=lambda n: n):
+            # 77 should be Orange (6)
+            self.assertEqual(UI.get_temp_color(77), 6)
+            # 30 should be Blue (5)
+            self.assertEqual(UI.get_temp_color(30), 5)
 
     @patch('subprocess.check_output')
     def test_get_system_temps_finds_max_temperature(self, mock_sensors):
@@ -53,7 +58,7 @@ class StatusRenderingTests(unittest.TestCase):
         }
         mock_sensors.return_value = json.dumps(sensors_data)
         
-        max_temp, temps = TUI.get_system_temps()
+        max_temp, temps = TELEMETRY.get_system_temps()
         
         # Should pick up 82.0 as the max temp
         self.assertEqual(max_temp, 82.0)
@@ -66,7 +71,7 @@ class StatusRenderingTests(unittest.TestCase):
         mock_exists.return_value = True
         mock_open.return_value.__enter__.return_value.read.return_value = "55000\n"
         
-        temp = TUI.get_cpu_temp()
+        temp = TELEMETRY.get_cpu_temp()
         self.assertEqual(temp, 55.0)
 
     @patch('pathlib.Path.glob')
@@ -80,14 +85,14 @@ class StatusRenderingTests(unittest.TestCase):
         cpu0.read_text.return_value = "3200000\n"
         cpu1.read_text.return_value = "800000\n"
         
-        freq = TUI.get_cpu_freq()
+        freq = TELEMETRY.get_cpu_freq()
         self.assertEqual(freq, 2000.0)
 
     def test_ansi_color_pair_start_does_not_overwrite_static_pairs(self):
         # Pre-allocated curses pairs used by get_val_color / get_temp_color are
         # 1..6 and 11. The ANSI dynamic allocator must start above 11 so it
         # never overwrites the RED pair (11) used for hot temperatures.
-        self.assertGreater(TUI.next_ansi_color_pair, 11)
+        self.assertGreater(UI.next_ansi_color_pair, 11)
 
 if __name__ == "__main__":
     unittest.main()
