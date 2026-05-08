@@ -280,6 +280,12 @@ def apply_input(stdscr, keys, scroll_pos, scroll_offset, auto_scroll, log_h, ren
 
 def tail_log():
     global last_log_update, log_version, _tail_proc
+    
+    # Perform initial index update in the background to avoid blocking UI startup
+    with log_lock:
+        if log_indexer.update(): log_version += 1
+    render_event.set()
+    
     try:
         # tail -f with a small buffer for responsiveness
         _tail_proc = subprocess.Popen(
@@ -370,6 +376,7 @@ def main(stdscr):
     # State for auto-scroll stability
     last_known_total_raw = -1
     last_known_last_line_len = -1
+    last_smi_lines = -1
 
     while True:
         # ── IDLE WAIT ────────────────────────────────────────────────────
@@ -397,41 +404,48 @@ def main(stdscr):
             curr_last_line_len = len(last_line)
 
         # ── APPLY INPUT ──────────────────────────────────────────────────
-        # We need a preliminary layout to handle mouse clicks correctly,
-        # but apply_input might change the layout for the NEXT frame.
-        # However, it's better to recalculate layout AFTER apply_input
-        # so the current frame reflects the new settings immediately.
+        max_smi = max(5, (max_y * 2) // 3) if config.settings["show_log"] else max(5, max_y - error_h - 2)
         
-        # Preliminary log_h for input (doesn't have to be perfect for mouse)
-        pre_smi_lines = min(max(5, (max_y * 2) // 3), len(smi_snapshot))
-        pre_log_h = max(1, max_y - pre_smi_lines - error_h - 2)
+        if smi_reset_counter > 0:
+            reserved_smi_lines_by_height.clear()
+            smi_reset_counter -= 1
+
+        # Peek at what smi_lines would be
+        pre_smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
+        if pre_smi_lines == 0:
+            pre_smi_lines = min(max_smi, max(12, len(smi_snapshot))) if config.settings["show_gpu"] else min(max_smi, len(smi_snapshot))
+        if not config.settings["show_log"]: pre_smi_lines = max_y - error_h - 1
+        
+        pre_log_h = max(1, max_y - pre_smi_lines - error_h - 2) if config.settings["show_log"] else 0
 
         scroll_pos, scroll_offset, auto_scroll, input_changed, smi_changed, quit_req = apply_input(
             stdscr, keys, scroll_pos, scroll_offset, auto_scroll, pre_log_h, render_width, pre_smi_lines, 
             build_visible_log_window(scroll_pos, scroll_offset, pre_log_h, render_width))
         if quit_req: break
         
-        if smi_changed or input_changed:
-            stdscr.clear()
+        if smi_changed:
+            smi_reset_counter = SMI_RESET_FRAMES
+            reserved_smi_lines_by_height.clear()
         input_was_active = bool(input_changed)
 
         # ── FINAL LAYOUT ─────────────────────────────────────────────────
-        if config.settings["show_log"]:
-            max_smi = max(5, (max_y * 2) // 3)
-        else:
-            max_smi = max(5, max_y - error_h - 2)
-
-        # Actual lines used by SMI snapshot
         observed_smi_lines = len(smi_snapshot)
         
         if config.settings["show_log"]:
-            # If log is shown, SMI takes what it needs up to max_smi
-            smi_lines = min(max_smi, observed_smi_lines)
+            smi_lines = reserved_smi_lines_by_height.get(max_y, 0)
+            if smi_lines == 0:
+                smi_lines = min(max_smi, max(12, observed_smi_lines)) if config.settings["show_gpu"] else min(max_smi, observed_smi_lines)
             log_h = max(1, max_y - smi_lines - error_h - 2)
         else:
-            # If log is hidden, SMI takes all remaining space
             smi_lines = max_y - error_h - 1
             log_h = 0
+            
+        reserved_smi_lines_by_height[max_y] = smi_lines
+
+        if smi_lines != last_smi_lines:
+            stdscr.clear()
+            last_smi_lines = smi_lines
+            render_dirty = True
 
         # Auto-scroll adjustment
         if auto_scroll:

@@ -10,7 +10,8 @@ class LogIndexer:
         self._f = None
         self._last_size = 0
         self._lock = threading.RLock()
-        self.update()
+        # Do not call update() here; it will be called by the background thread
+        # to ensure instantaneous UI startup.
 
     def _open_file(self):
         # Assumes caller holds self._lock
