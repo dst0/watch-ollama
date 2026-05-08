@@ -37,6 +37,7 @@ log_indexer = LogIndexer(READABLE_LOG)
 # Constants & State
 LOG_WINDOW_SIZE = 3000
 log_cache = {}
+thought_cache = {} # abs_idx -> bool
 log_lock = threading.Lock()
 log_ready = threading.Event()
 log_version = 0
@@ -76,15 +77,25 @@ def get_cached_log_entry(abs_idx, raw_content, width):
     return entry
 
 def line_is_in_thought(source_idx):
+    if source_idx in thought_cache: return thought_cache[source_idx]
+    in_thought = False
+    # Only scan back 500 lines
     for j in range(source_idx, max(-1, source_idx - 500), -1):
+        if j in thought_cache:
+            in_thought = thought_cache[j]
+            break
         check_line = ui.sanitize_render_text(log_indexer.get_line(j))
         if ui.line_opens_thought(check_line):
             if ui.line_closes_thought(check_line):
-                return max(check_line.rfind("</think>"), check_line.rfind("[/THOUGHT]")) < max(
+                in_thought = max(check_line.rfind("</think>"), check_line.rfind("[/THOUGHT]")) < max(
                     check_line.rfind("<think>"), check_line.rfind("[THOUGHT]"))
-            return True
-        if ui.line_closes_thought(check_line) or ui.is_separator_line(check_line): return False
-    return False
+            else: in_thought = True
+            break
+        if ui.line_closes_thought(check_line) or ui.is_separator_line(check_line):
+            in_thought = False
+            break
+    thought_cache[source_idx] = in_thought
+    return in_thought
 
 def build_visible_log_window(scroll_pos, scroll_offset, log_h, width):
     visible = []
@@ -102,7 +113,9 @@ def build_visible_log_window(scroll_pos, scroll_offset, log_h, width):
     if len(log_cache) > LOG_WINDOW_SIZE * 2:
         current_range = set(range(max(0, scroll_pos - 1000), min(total_raw, scroll_pos + LOG_WINDOW_SIZE + 1000)))
         for k in list(log_cache.keys()):
-            if k not in current_range: del log_cache[k]
+            if k not in current_range:
+                del log_cache[k]
+                if k in thought_cache: del thought_cache[k]
     return visible
 
 def get_line_segments_count(raw_idx, width):
@@ -450,6 +463,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt: pass
     finally:
         print("\033[?1003l", end="")
+        log_indexer.close()
         if _tail_proc:
             try: _tail_proc.terminate()
             except Exception: pass

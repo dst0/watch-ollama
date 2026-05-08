@@ -186,13 +186,15 @@ class LogSanitizationTests(unittest.TestCase):
         self.assertEqual(TUI.STARTUP_LOGO_SECONDS, 2.0)
 
     def test_line_is_in_thought_bounds_check(self):
+        TUI.thought_cache.clear()
         log_indexer = MagicMock()
         TUI.log_indexer = log_indexer
         lines = ["<think>", "thought content", "</think>", "normal line"]
         log_indexer.get_line.side_effect = lambda i: lines[i] if 0 <= i < len(lines) else ""
-        
-        # In thought (index 1 is "thought content")
+
+        # Test scan back logic
         self.assertTrue(TUI.line_is_in_thought(1))
+
         
         # Out of thought (index 3 is "normal line")
         self.assertFalse(TUI.line_is_in_thought(3))
