@@ -119,9 +119,6 @@ class LogIndexer:
 
     def __len__(self):
         with self._lock:
-            if not os.path.exists(self.filename):
-                return 0
-                
             count = len(self.offsets)
             if self._last_size > self.offsets[-1]:
                 return count

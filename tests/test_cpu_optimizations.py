@@ -236,7 +236,7 @@ class RenderEventTests(unittest.TestCase):
         src = (ROOT / "scripts" / "watch-ollama").read_text()
         self.assertIn("subprocess.Popen", src)
         self.assertIn("tail", src)
-        self.assertIn("-f", src)
+        self.assertIn("-F", src)
 
 
 # ---------------------------------------------------------------------------

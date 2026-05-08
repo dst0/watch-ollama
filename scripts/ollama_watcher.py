@@ -139,7 +139,16 @@ def main():
             'eval_duration': 0.0
         }
         
+        last_rotation_check = time.time()
+        
         while True:
+            # Reopen the readable log if it was rotated
+            if time.time() - last_rotation_check > 2.0:
+                last_rotation_check = time.time()
+                if not os.path.exists(READABLE_LOG):
+                    out_f.close()
+                    out_f = open(READABLE_LOG, "a")
+                    
             line = f.readline()
             if not line:
                 if os.path.getsize(RAW_LOG) < f.tell():
