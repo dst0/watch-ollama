@@ -109,26 +109,14 @@ def build_visible_log_window(scroll_pos, scroll_offset, log_h, width):
         raw_content = log_indexer.get_line(curr_raw)
         entry = get_cached_log_entry(curr_raw, raw_content, width)
         segments = entry["wrapped"][width]
+        
+        # Ensure we process segments correctly even if empty
         for i in range(curr_off, len(segments)):
             visible.append((curr_raw, i, segments[i], entry))
             if len(visible) >= log_h: break
+        
         curr_raw += 1
         curr_off = 0
-    
-    # Cleanup log_cache periodically (Log cache is expensive, but thought_cache is cheap booleans)
-    if len(log_cache) > LOG_WINDOW_SIZE * 2:
-        current_range = set(range(max(0, scroll_pos - 1000), min(total_raw, scroll_pos + LOG_WINDOW_SIZE + 1000)))
-        for k in list(log_cache.keys()):
-            if k not in current_range:
-                del log_cache[k]
-    
-    # Cleanup thought_cache less aggressively (keep 1M entries for performance)
-    if len(thought_cache) > 1000000:
-        current_range = set(range(max(0, scroll_pos - 500000), min(total_raw, scroll_pos + 500000)))
-        for k in list(thought_cache.keys()):
-            if k not in current_range:
-                del thought_cache[k]
-                
     return visible
 
 def get_line_segments_count(raw_idx, width):
@@ -445,15 +433,16 @@ def main(stdscr):
             last_smi_lines = smi_lines
             render_dirty = True
 
-        # Auto-scroll adjustment
+        # Auto-scroll adjustment and status tracking
         if auto_scroll:
-            if (total_raw != last_known_total_raw or 
-                curr_last_line_len != last_known_last_line_len or 
-                log_h != pre_log_h or 
-                auto_scroll != last_auto):
-                scroll_pos, scroll_offset = find_scroll_start_for_bottom(log_h, render_width)
-                last_known_total_raw = total_raw
-                last_known_last_line_len = curr_last_line_len
+            # Force re-evaluation of the scroll position to the bottom to 'follow' new lines
+            scroll_pos, scroll_offset = find_scroll_start_for_bottom(log_h, render_width)
+            last_known_total_raw = total_raw
+            last_known_last_line_len = curr_last_line_len
+        elif total_raw > last_known_total_raw:
+            # Update last_known_total_raw even in pause to track growth
+            last_known_total_raw = total_raw
+            last_known_last_line_len = curr_last_line_len
         else:
             # Detect rotation even in paused mode
             if total_raw < last_known_total_raw:

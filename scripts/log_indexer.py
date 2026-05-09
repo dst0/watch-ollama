@@ -74,19 +74,19 @@ class LogIndexer:
 
     def get_line(self, n):
         with self._lock:
-            total_lines = len(self)
-            if n < 0 or n >= total_lines:
+            # Defensive check: ensure n is within current offset bounds
+            if n < 0 or n >= len(self.offsets) - 1:
                 return ""
             try:
                 f = self._open_file()
                 if not f: return ""
                 
                 start = self.offsets[n]
-                if n + 1 < len(self.offsets):
-                    end = self.offsets[n+1]
-                else:
-                    end = self._last_size
+                end = self.offsets[n+1]
                     
+                # Ensure end is valid
+                if end < start: return ""
+                
                 f.seek(start)
                 return f.read(end - start).decode('utf-8', errors='replace').rstrip('\n').replace('\t', '    ')
             except Exception:
@@ -94,10 +94,14 @@ class LogIndexer:
 
     def get_lines(self, start_idx, count):
         with self._lock:
+            # Clamp start_idx
             if start_idx < 0:
                 start_idx = 0
+            
+            # Use indexed lines only
             total = len(self)
             end_idx = min(start_idx + count, total)
+            
             if start_idx >= end_idx:
                 return []
             
@@ -106,11 +110,14 @@ class LogIndexer:
                 f = self._open_file()
                 if not f: return []
                 for i in range(start_idx, end_idx):
+                    # Robust bounds check for the offset array
+                    if i >= len(self.offsets) - 1:
+                        break
                     start = self.offsets[i]
-                    if i + 1 < len(self.offsets):
-                        end = self.offsets[i+1]
-                    else:
-                        end = self._last_size
+                    end = self.offsets[i+1]
+                    
+                    if end < start: continue
+                        
                     f.seek(start)
                     lines.append(f.read(end - start).decode('utf-8', errors='replace').rstrip('\n').replace('\t', '    '))
             except Exception:
@@ -119,11 +126,8 @@ class LogIndexer:
 
     def __len__(self):
         with self._lock:
-            count = len(self.offsets)
-            if self._last_size > self.offsets[-1]:
-                return count
-            else:
-                return count - 1 if count > 0 else 0
+            # Return the count of lines we have fully indexed
+            return len(self.offsets) - 1 if len(self.offsets) > 0 else 0
 
     def close(self):
         with self._lock:

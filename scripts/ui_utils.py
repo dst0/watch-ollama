@@ -126,7 +126,8 @@ def line_closes_thought(line):
 
 def render_attr_for_log_line(entry, line, color_pair=None):
     if color_pair is None: color_pair = curses.color_pair
-    if line.startswith("| "): return color_pair(8)
+    # Use color pair 7 (often mapped to white/gray in 256-color) for better visibility than 8
+    if line.startswith("| "): return color_pair(7)
     role_color_pair = role_color_pair_for_line(line)
     if role_color_pair is not None: return color_pair(role_color_pair) | curses.A_BOLD
     if is_separator_line(line): return color_pair(3) | curses.A_BOLD
