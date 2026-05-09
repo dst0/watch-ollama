@@ -117,14 +117,18 @@ log "Detected shell: $CURRENT_SHELL  →  rc file: $SHELL_RC"
 # ── Remove aliases / legacy PATH from rc file ──────────────────────────────────
 if [ -f "$SHELL_RC" ]; then
     if grep -qF "$ALIAS_MARKER_START" "$SHELL_RC" 2>/dev/null; then
-        sed -i "/$ALIAS_MARKER_START/,/$ALIAS_MARKER_END/d" "$SHELL_RC"
+        cp "$SHELL_RC" "$SHELL_RC.tmp"
+        sed "/$ALIAS_MARKER_START/,/$ALIAS_MARKER_END/d" "$SHELL_RC.tmp" > "$SHELL_RC"
+        rm -f "$SHELL_RC.tmp"
         change "Removed alias block from $SHELL_RC"
     else
         log "No alias block found in $SHELL_RC"
     fi
 
     if grep -qF "$PATH_MARKER" "$SHELL_RC" 2>/dev/null; then
-        sed -i "/$PATH_MARKER/,+1d" "$SHELL_RC"
+        cp "$SHELL_RC" "$SHELL_RC.tmp"
+        sed "/$PATH_MARKER/{N;d;}" "$SHELL_RC.tmp" > "$SHELL_RC"
+        rm -f "$SHELL_RC.tmp"
         change "Removed legacy PATH entry from $SHELL_RC"
     fi
 else

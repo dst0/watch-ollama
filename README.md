@@ -44,7 +44,9 @@ mechanisms to process entire sequences of data in parallel, capturing long-range
 dependencies without using recurrent connections.
 
 [GENERATION FINISHED] [LATENCY: 850ms] [GEN: 45 tokens | 52.9 t/s] [PP: 12 tokens | 180.2 pp/s]
+
 --------------------------------------------------------------------------------
+
 [FOLLOWING] (Line 542/542) (G:GPU C:CPU L:Log H:Hint T:Tool | F:Follow | Q:Quit)  🌡  output
 ```
 
@@ -59,8 +61,10 @@ CPU:  8% 2.1GHz 42°C | RAM: 9/32G | GPU:65°C | SSD: 37°C
 
 --------------------------------------------------------------------------------
 ...
+
 [FOLLOWING] (Line 98/98) (G:GPU C:CPU L:Log H:Hint T:Tool | F:Follow | Q:Quit)  🌡  output
-```
+
+
 
 ## Screenshots & Video
 

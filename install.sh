@@ -171,13 +171,17 @@ add_aliases() {
 
     # Remove any PATH block written by a previous version of this installer
     if grep -qF "# watch-ollama: PATH" "$rc_file" 2>/dev/null; then
-        sed -i '/# watch-ollama: PATH/,+1d' "$rc_file"
+        cp "$rc_file" "$rc_file.tmp"
+        sed '/# watch-ollama: PATH/{N;d;}' "$rc_file.tmp" > "$rc_file"
+        rm -f "$rc_file.tmp"
         change "Removed legacy PATH entry from $rc_file"
     fi
 
     # Remove existing alias block so we always write a fresh, up-to-date one
     if grep -qF "$ALIAS_MARKER_START" "$rc_file" 2>/dev/null; then
-        sed -i "/$ALIAS_MARKER_START/,/$ALIAS_MARKER_END/d" "$rc_file"
+        cp "$rc_file" "$rc_file.tmp"
+        sed "/$ALIAS_MARKER_START/,/$ALIAS_MARKER_END/d" "$rc_file.tmp" > "$rc_file"
+        rm -f "$rc_file.tmp"
         change "Removed outdated alias block from $rc_file"
     fi
 
